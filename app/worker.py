@@ -183,8 +183,10 @@ class NotificationWorker:
         task_title = f"Задача #{task_id}"  # TODO: получать реальный title из Pyrus API
         comment_text = record.get('last_mention_comment_text', 'Комментарий')
         
-        # Вычисляем просрочку
-        hours_overdue = int((now.replace(tzinfo=pytz.UTC) - last_mention_at).total_seconds() / 3600)
+        # Вычисляем просрочку (приводим к одной таймзоне)
+        now_utc = now.astimezone(pytz.UTC) if now.tzinfo else pytz.UTC.localize(now)
+        last_mention_utc = last_mention_at if last_mention_at.tzinfo else pytz.UTC.localize(last_mention_at)
+        hours_overdue = int((now_utc - last_mention_utc).total_seconds() / 3600)
         
         # Обрезаем тексты
         task_title_short = task_title[:TRUNC_TASK_TITLE_LEN]
@@ -209,8 +211,10 @@ class NotificationWorker:
             task_title = f"Задача #{task_id}"  # TODO: получать реальный title
             comment_text = record.get('last_mention_comment_text', 'Комментарий')
             
-            # Вычисляем просрочку
-            hours_overdue = int((now.replace(tzinfo=pytz.UTC) - last_mention_at).total_seconds() / 3600)
+            # Вычисляем просрочку (приводим к одной таймзоне)
+            now_utc = now.astimezone(pytz.UTC) if now.tzinfo else pytz.UTC.localize(now)
+            last_mention_utc = last_mention_at if last_mention_at.tzinfo else pytz.UTC.localize(last_mention_at)
+            hours_overdue = int((now_utc - last_mention_utc).total_seconds() / 3600)
             max_hours_overdue = max(max_hours_overdue, hours_overdue)
             
             # Обрезаем тексты

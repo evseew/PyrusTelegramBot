@@ -152,13 +152,24 @@ class Database:
         Returns:
             Список записей с данными пользователя
         """
-        # Джойн с таблицей users для получения telegram_id
-        result = self.client.table("pending_notifications").select("""
-            *,
-            users!inner(telegram_id, full_name)
-        """).lte("next_send_at", now_ts.isoformat()).execute()
+        # Получаем готовые записи
+        result = self.client.table("pending_notifications").select("*").lte("next_send_at", now_ts.isoformat()).execute()
         
-        return result.data
+        # Дополняем данными пользователей
+        enriched_records = []
+        for record in result.data:
+            user_id = record['user_id']
+            
+            # Получаем данные пользователя
+            user_result = self.client.table("users").select("telegram_id, full_name").eq("user_id", user_id).execute()
+            
+            if user_result.data:
+                # Добавляем данные пользователя к записи
+                record['users'] = user_result.data[0]
+                enriched_records.append(record)
+            # Пропускаем записи без пользователей
+        
+        return enriched_records
     
     def mark_sent_or_delete_by_ttl(self, task_id: int, user_id: int, now_ts: datetime, 
                                   ttl_hours: int, repeat_interval_hours: int,
@@ -186,6 +197,13 @@ class Database:
         
         row = result.data[0]
         last_mention_at = datetime.fromisoformat(row["last_mention_at"].replace('Z', '+00:00'))
+        
+        # Приводим времена к одной таймзоне для сравнения
+        import pytz
+        if now_ts.tzinfo is None:
+            now_ts = pytz.UTC.localize(now_ts)
+        if last_mention_at.tzinfo is None:
+            last_mention_at = pytz.UTC.localize(last_mention_at)
         
         # Проверяем TTL
         if now_ts >= last_mention_at + timedelta(hours=ttl_hours):
