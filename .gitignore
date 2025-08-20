@@ -46,5 +46,29 @@ Thumbs.db
 *.tmp
 *.temp
 
-#Instructions
+# Instructions and development docs
 instr/
+
+# Test files (не нужны на продакшне)
+test_*.py
+simple_test.py
+check_stage3_completeness.py
+
+# Development stage docs
+STAGE*_COMPLETED.md
+UPDATE_VPS.md
+VPS_TESTING.md
+GET_PYRUS_WEBHOOK_SECRET.md
+
+# Development scripts
+deploy_to_vps.sh
+run_stage5.py
+
+# SQL schema (уже применена в Supabase)
+schema.sql
+
+# Deployment helpers
+.deployignore
+
+# Duplicate env files
+env.example
