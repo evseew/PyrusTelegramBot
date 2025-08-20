@@ -47,8 +47,8 @@ class NotificationWorker:
             except Exception as e:
                 print(f"⚠️ Ошибка инициализации Telegram бота: {e}")
                 print(f"📝 Переключаемся в DRY_RUN режим")
-                global DRY_RUN
-                DRY_RUN = True
+                # Устанавливаем DRY_RUN режим через globals()
+                globals()['DRY_RUN'] = True
     
     async def start(self):
         """Запуск воркера с циклом каждые 60 секунд"""
