@@ -9,7 +9,7 @@ from typing import Optional
 import pytz
 
 
-def verify_pyrus_signature(raw_body: bytes, secret: str, dev_skip: bool = False) -> bool:
+def verify_pyrus_signature(raw_body: bytes, secret: str, dev_skip: bool = False, signature_header: str = "") -> bool:
     """
     Проверка подписи HMAC-SHA1 от Pyrus
     
@@ -17,6 +17,7 @@ def verify_pyrus_signature(raw_body: bytes, secret: str, dev_skip: bool = False)
         raw_body: Сырое тело запроса
         secret: Секрет интеграции PYRUS_WEBHOOK_SECRET
         dev_skip: Пропустить проверку для разработки
+        signature_header: Заголовок X-Pyrus-Sig от Pyrus
     
     Returns:
         True если подпись валидна или dev_skip=True
@@ -24,18 +25,19 @@ def verify_pyrus_signature(raw_body: bytes, secret: str, dev_skip: bool = False)
     if dev_skip:
         return True
     
-    if not secret:
+    if not secret or not signature_header:
         return False
     
     # Pyrus отправляет подпись в заголовке X-Pyrus-Sig
     # Формат: sha1=<hex_hash>
-    expected_signature = hmac.new(
+    expected_signature = "sha1=" + hmac.new(
         secret.encode('utf-8'),
         raw_body,
         hashlib.sha1
     ).hexdigest()
     
-    return expected_signature
+    # Сравниваем подписи безопасным способом
+    return hmac.compare_digest(expected_signature, signature_header)
 
 
 def normalize_phone_e164(phone: str) -> Optional[str]:
