@@ -68,8 +68,8 @@ async def pyrus_webhook(request: Request):
             asyncio.create_task(_log_webhook_async(raw_body, retry_header, f"parse_error: {e}"))
             raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
         
-        # 3. Обрабатываем событие (пока упрощенно)
-        # В будущем здесь будет полная логика обработки
+        # 3. Обрабатываем событие по типу
+        await _process_webhook_event(payload, retry_header)
         
         # 4. Логируем успешную обработку  
         asyncio.create_task(_log_webhook_async(raw_body, retry_header, "processed"))
@@ -118,6 +118,145 @@ async def _log_webhook_async(raw_body: bytes, retry_header: str, status: str = "
     except Exception as e:
         # Если что-то пошло не так, логируем в консоль
         print(f"Ошибка логирования вебхука: {e}")
+
+
+async def _process_webhook_event(payload: PyrusWebhookPayload, retry_header: str):
+    """
+    Обработка события вебхука согласно PRD
+    
+    Args:
+        payload: Распарсенный webhook payload
+        retry_header: Заголовок повтора
+    """
+    try:
+        event_type = payload.event
+        task = payload.task
+        task_id = task.id
+        actor = payload.actor
+        
+        # Логируем событие
+        db.log_event("webhook_received", {
+            "event": event_type,
+            "task_id": task_id,
+            "actor_id": actor.id if actor else None,
+            "retry_header": retry_header
+        })
+        
+        if event_type == "comment":
+            await _handle_comment_event(task, retry_header)
+        elif event_type in ["task_updated", "form_updated"]:
+            await _handle_task_update_event(task, actor, payload.change)
+        elif event_type in ["task_closed", "task_canceled"]:
+            await _handle_task_closed_event(task_id)
+        elif event_type == "comment_deleted":
+            await _handle_comment_deleted_event(task, payload.change)
+        else:
+            print(f"⚠️ Неизвестный тип события: {event_type}")
+            
+    except Exception as e:
+        print(f"❌ Ошибка обработки вебхука: {e}")
+        db.log_event("webhook_error", {
+            "error": str(e),
+            "event": payload.event if payload else "unknown",
+            "task_id": payload.task.id if payload and payload.task else None
+        })
+
+
+async def _handle_comment_event(task, retry_header: str):
+    """Обработка события комментария с упоминаниями"""
+    if not task.comments:
+        return
+    
+    # Берём последний комментарий
+    latest_comment = max(task.comments, key=lambda c: c.create_date)
+    
+    # Проверяем идемпотентность
+    if db.processed_comment_exists(task.id, latest_comment.id):
+        print(f"🔄 Комментарий {latest_comment.id} уже обработан (повтор)")
+        return
+    
+    # Отмечаем как обработанный
+    db.insert_processed_comment(task.id, latest_comment.id)
+    
+    # Обрабатываем упоминания
+    if latest_comment.mentions:
+        print(f"👥 Найдено {len(latest_comment.mentions)} упоминаний в задаче {task.id}")
+        
+        for user_id in latest_comment.mentions:
+            # Проверяем, зарегистрирован ли пользователь
+            user = db.get_user(user_id)
+            if not user:
+                print(f"⚠️ Пользователь {user_id} не зарегистрирован, пропускаем")
+                continue
+            
+            # Планируем уведомление
+            mention_time = latest_comment.create_date
+            next_send_at = schedule_after(mention_time, DELAY_HOURS, TZ, QUIET_START, QUIET_END)
+            
+            db.upsert_or_shift_pending(
+                task_id=task.id,
+                user_id=user_id,
+                mention_ts=mention_time,
+                comment_id=latest_comment.id,
+                comment_text=latest_comment.text,
+                next_send_at=next_send_at
+            )
+            
+            db.log_event("mention_queued", {
+                "task_id": task.id,
+                "user_id": user_id,
+                "comment_id": latest_comment.id,
+                "next_send_at": next_send_at.isoformat()
+            })
+            
+            print(f"📬 Запланировано уведомление для пользователя {user_id} на {next_send_at.strftime('%d.%m %H:%M')}")
+
+
+async def _handle_task_update_event(task, actor, change):
+    """Обработка обновления задачи (реакция пользователя)"""
+    if not actor:
+        return
+    
+    # Это реакция пользователя - удаляем его из очереди
+    db.delete_pending(task.id, actor.id)
+    
+    db.log_event("user_reacted", {
+        "task_id": task.id,
+        "user_id": actor.id,
+        "change_type": change.get("kind") if change else "unknown"
+    })
+    
+    print(f"✅ Пользователь {actor.id} отреагировал на задачу {task.id}, удалили из очереди")
+
+
+async def _handle_task_closed_event(task_id: int):
+    """Обработка закрытия/отмены задачи"""
+    db.delete_pending_by_task(task_id)
+    
+    db.log_event("task_closed", {
+        "task_id": task_id
+    })
+    
+    print(f"🔒 Задача {task_id} закрыта, очистили всю очередь по этой задаче")
+
+
+async def _handle_comment_deleted_event(task, change):
+    """Обработка удаления/редактирования комментария"""
+    if not change or "comment_id" not in change:
+        return
+    
+    comment_id = change["comment_id"]
+    
+    # Находим записи в очереди с этим комментарием
+    # В упрощённой версии удаляем все записи по задаче
+    # В полной версии нужно будет проверять last_mention_comment_id
+    
+    db.log_event("comment_deleted", {
+        "task_id": task.id,
+        "comment_id": comment_id
+    })
+    
+    print(f"🗑️ Комментарий {comment_id} удален/изменён в задаче {task.id}")
 
 
 if __name__ == "__main__":

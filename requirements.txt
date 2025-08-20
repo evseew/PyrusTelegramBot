@@ -9,6 +9,10 @@ pydantic==2.5.3
 pytz==2023.4
 python-dotenv==1.0.0
 
+# Telegram Bot
+python-telegram-bot==20.7
+httpx==0.25.2
+
 # Для тестов
 pytest==7.4.3
 pytest-asyncio==0.21.1

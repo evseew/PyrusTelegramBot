@@ -26,8 +26,8 @@ QUIET_END = os.getenv("QUIET_END", "09:00")
 TRUNC_TASK_TITLE_LEN = int(os.getenv("TRUNC_TASK_TITLE_LEN", "50"))
 TRUNC_COMMENT_LEN = int(os.getenv("TRUNC_COMMENT_LEN", "50"))
 
-# Режим работы
-DRY_RUN = True  # В Этапе 4 только логирование, без реальной отправки
+# Режим работы (переключается автоматически при наличии BOT_TOKEN)
+DRY_RUN = not bool(os.getenv("BOT_TOKEN"))  # Если есть BOT_TOKEN, используем реальную отправку
 
 
 class NotificationWorker:
@@ -36,6 +36,19 @@ class NotificationWorker:
     def __init__(self):
         self.timezone = pytz.timezone(TZ)
         self.running = False
+        self.telegram_bot = None
+        
+        # Импортируем и инициализируем бота только если не DRY_RUN
+        if not DRY_RUN:
+            try:
+                from .bot import bot
+                self.telegram_bot = bot
+                print(f"✅ Telegram бот инициализирован для отправки уведомлений")
+            except Exception as e:
+                print(f"⚠️ Ошибка инициализации Telegram бота: {e}")
+                print(f"📝 Переключаемся в DRY_RUN режим")
+                global DRY_RUN
+                DRY_RUN = True
     
     async def start(self):
         """Запуск воркера с циклом каждые 60 секунд"""
@@ -149,14 +162,26 @@ class NotificationWorker:
                     "message": message
                 })
             else:
-                # TODO: В Этапе 5 здесь будет реальная отправка через Telegram
-                await self._send_telegram_message(telegram_id, message)
+                # Реальная отправка через Telegram
+                success = await self._send_telegram_message(telegram_id, message)
                 
-                db.log_event("notify_sent", {
-                    "user_id": user_id,
-                    "telegram_id": telegram_id,
-                    "task_count": len(records)
-                })
+                if success:
+                    print(f"✅ Уведомление отправлено {full_name} (TG:{telegram_id})")
+                    db.log_event("notify_sent", {
+                        "user_id": user_id,
+                        "telegram_id": telegram_id,
+                        "full_name": full_name,
+                        "task_count": len(records)
+                    })
+                else:
+                    print(f"❌ Не удалось отправить уведомление {full_name} (TG:{telegram_id})")
+                    db.log_event("notify_failed", {
+                        "user_id": user_id,
+                        "telegram_id": telegram_id,
+                        "full_name": full_name,
+                        "task_count": len(records),
+                        "error": "telegram_send_failed"
+                    })
             
         except Exception as e:
             print(f"❌ Ошибка отправки пользователю {user_id}: {e}")
@@ -237,9 +262,12 @@ class NotificationWorker:
         return header + '\n\n'.join(lines)
     
     async def _send_telegram_message(self, telegram_id: int, message: str):
-        """Отправка сообщения через Telegram (заглушка для Этапа 4)"""
-        # TODO: Реализовать в Этапе 5
-        pass
+        """Отправка сообщения через Telegram"""
+        if self.telegram_bot:
+            return await self.telegram_bot.send_notification(telegram_id, message)
+        else:
+            print(f"⚠️ Telegram бот недоступен для отправки в chat {telegram_id}")
+            return False
     
     async def _update_records_after_sending(self, records: List[Dict[str, Any]], now: datetime):
         """Обновление записей после отправки (TTL, повторы)"""
