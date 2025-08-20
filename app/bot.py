@@ -533,17 +533,36 @@ class PyrusTelegramBot:
         logger.info(f"👥 Админы: {ADMIN_IDS}")
         
         try:
-            # Инициализируем бота
+            # Инициализируем и запускаем бота
             await self.application.initialize()
             await self.application.start()
-            
-            # Запускаем polling
             await self.application.updater.start_polling()
             
             logger.info("✅ Telegram бот запущен и слушает обновления")
             
-            # Держим процесс активным
-            await self.application.updater.idle()
+            # Держим процесс активным (новый API v20+)
+            import signal
+            import asyncio
+            
+            # Создаем задачу для обработки сигналов
+            stop_signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
+            loop = asyncio.get_running_loop()
+            
+            # Функция для graceful shutdown
+            def handle_shutdown(sig):
+                logger.info(f"🛑 Получен сигнал {sig.name}, остановка бота...")
+                loop.create_task(self.shutdown())
+            
+            for sig in stop_signals:
+                loop.add_signal_handler(sig, handle_shutdown, sig)
+            
+            # Бесконечный цикл с проверкой
+            try:
+                while True:
+                    await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                logger.info("🔄 Задача отменена, завершение работы...")
+                raise
             
         except Exception as e:
             logger.error(f"❌ Ошибка запуска бота: {e}")
@@ -551,8 +570,17 @@ class PyrusTelegramBot:
         finally:
             await self.application.stop()
     
+    async def shutdown(self):
+        """Graceful shutdown бота"""
+        logger.info("🛑 Остановка Telegram бота...")
+        try:
+            await self.application.updater.stop()
+            await self.application.stop()
+        except Exception as e:
+            logger.error(f"❌ Ошибка при остановке: {e}")
+    
     def stop(self):
-        """Остановка бота"""
+        """Остановка бота (синхронная)"""
         logger.info("🛑 Остановка Telegram бота...")
 
 
