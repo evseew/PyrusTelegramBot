@@ -48,6 +48,7 @@ show_help() {
     echo "  logs-api       - Логи только API"
     echo "  logs-bot       - Логи только Telegram бота"
     echo "  logs-worker    - Логи только воркера"
+    echo "  logs-webhooks  - Логи вебхуков (raw файлы)"
     echo "  queue          - Показать очередь уведомлений"
     echo "  users          - Показать зарегистрированных пользователей"
     echo ""
@@ -190,6 +191,20 @@ show_logs_bot() {
 show_logs_worker() {
     header "ЛОГИ ВОРКЕРА"
     journalctl -u pyrus-worker -f --lines=30
+}
+
+# Функция показа логов вебхуков
+show_webhook_logs() {
+    header "ЛОГИ PYRUS WEBHOOKS"
+    if [ -d "logs" ]; then
+        echo "📂 Найдены файлы логов:"
+        ls -la logs/pyrus_raw_*.ndjson 2>/dev/null || echo "📭 Нет файлов логов"
+        echo ""
+        echo "🔍 Последние 10 записей:"
+        tail -10 logs/pyrus_raw_*.ndjson 2>/dev/null | jq -r '.timestamp + " | " + .status + " | " + (.payload.event // "unknown")' 2>/dev/null || tail -10 logs/pyrus_raw_*.ndjson 2>/dev/null || echo "Нет логов для отображения"
+    else
+        echo "📂 Папка logs не найдена"
+    fi
 }
 
 # Функция показа очереди
@@ -374,6 +389,9 @@ case "${1:-help}" in
         ;;
     logs-worker)
         show_logs_worker
+        ;;
+    logs-webhooks)
+        show_webhook_logs
         ;;
     queue)
         show_queue

@@ -28,12 +28,12 @@ from telegram.ext import (
 )
 from telegram.error import TelegramError, RetryAfter, TimedOut
 
+# Загружаем переменные окружения
+load_dotenv()
+
 # Наши модули
 from .db import db
 from .utils import normalize_phone_e164
-
-# Загружаем переменные окружения
-load_dotenv()
 
 # Конфигурация
 BOT_TOKEN = os.getenv("BOT_TOKEN")

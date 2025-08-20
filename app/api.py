@@ -55,7 +55,11 @@ async def pyrus_webhook(request: Request):
     try:
         # 1. Проверяем подпись HMAC
         if not verify_pyrus_signature(raw_body, PYRUS_WEBHOOK_SECRET, DEV_SKIP_PYRUS_SIG, signature_header):
-            # Логируем в файл для отладки
+            # Логируем детали для отладки
+            print(f"🔒 Signature validation failed:")
+            print(f"   PYRUS_WEBHOOK_SECRET present: {bool(PYRUS_WEBHOOK_SECRET)}")
+            print(f"   DEV_SKIP_PYRUS_SIG: {DEV_SKIP_PYRUS_SIG}")
+            print(f"   signature_header: {signature_header[:50]}...")
             asyncio.create_task(_log_webhook_async(raw_body, retry_header, "invalid_signature"))
             raise HTTPException(status_code=401, detail="Invalid signature")
         
