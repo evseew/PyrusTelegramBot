@@ -38,6 +38,9 @@ class PyrusTask(BaseModel):
     """Задача Pyrus"""
     id: int
     subject: Optional[str] = None
+    # Для задач-форм Pyrus присылает поле text вместо subject
+    text: Optional[str] = None
+    formatted_text: Optional[str] = None
     comments: List[PyrusComment] = Field(default_factory=list)
     # Добавим другие поля по мере изучения реальных webhook
 

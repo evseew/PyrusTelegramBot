@@ -120,7 +120,8 @@ class Database:
                 "last_mention_comment_id": comment_id,
                 "last_mention_comment_text": comment_text,
                 "next_send_at": next_send_at.isoformat(),
-                "task_title": task_title,
+                # Не перетираем сохранённый заголовок пустым значением
+                **({"task_title": task_title} if task_title else {}),
                 "last_mention_comment_text_clean": comment_text_clean or comment_text
             }
             self.client.table("pending_notifications").update(data).eq("task_id", task_id).eq("user_id", user_id).execute()

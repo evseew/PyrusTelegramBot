@@ -241,7 +241,8 @@ async def _handle_comment_event(task, actor, retry_header: str):
             # Планируем уведомление
             mention_time = comment.create_date
             next_send_at = schedule_after(mention_time, DELAY_HOURS, TZ, QUIET_START, QUIET_END)
-            task_title = task.subject or f"Задача #{task.id}"
+            # Берём subject, а для задач-форм fallback на text
+            task_title = (task.subject or task.text) or f"Задача #{task.id}"
 
             db.upsert_or_shift_pending(
                 task_id=task.id,
