@@ -96,7 +96,8 @@ class Database:
     # === Работа с очередью уведомлений ===
     
     def upsert_or_shift_pending(self, task_id: int, user_id: int, mention_ts: datetime,
-                               comment_id: int, comment_text: str, next_send_at: datetime) -> None:
+                               comment_id: int, comment_text: str, next_send_at: datetime,
+                               task_title: Optional[str] = None) -> None:
         """
         Создать или обновить запись в очереди уведомлений
         
@@ -117,7 +118,8 @@ class Database:
                 "last_mention_at": mention_ts.isoformat(),
                 "last_mention_comment_id": comment_id,
                 "last_mention_comment_text": comment_text,
-                "next_send_at": next_send_at.isoformat()
+                "next_send_at": next_send_at.isoformat(),
+                "task_title": task_title
             }
             self.client.table("pending_notifications").update(data).eq("task_id", task_id).eq("user_id", user_id).execute()
         else:
@@ -130,7 +132,8 @@ class Database:
                 "last_mention_comment_id": comment_id,
                 "last_mention_comment_text": comment_text,
                 "next_send_at": next_send_at.isoformat(),
-                "times_sent": 0
+                "times_sent": 0,
+                "task_title": task_title
             }
             self.client.table("pending_notifications").insert(data).execute()
     
@@ -141,6 +144,13 @@ class Database:
     def delete_pending_by_task(self, task_id: int) -> None:
         """Удалить все записи очереди для задачи"""
         self.client.table("pending_notifications").delete().eq("task_id", task_id).execute()
+    
+    def delete_pending_by_comment(self, task_id: int, comment_id: int) -> None:
+        """Удалить записи очереди, связанные с конкретным комментарием-упоминанием"""
+        self.client.table("pending_notifications").delete() \
+            .eq("task_id", task_id) \
+            .eq("last_mention_comment_id", comment_id) \
+            .execute()
     
     def select_due(self, now_ts: datetime) -> List[Dict[str, Any]]:
         """

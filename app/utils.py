@@ -180,3 +180,22 @@ def schedule_after(
         scheduled_time = scheduled_time.astimezone(pytz.UTC).replace(tzinfo=None)
     
     return scheduled_time
+
+
+def remove_at_mentions(text: str) -> str:
+    """
+    Удаляет упоминания вида @Имя или @ИмяФамилия из текста комментария.
+    Если после удаления текст пустой или состоит из пробелов/знаков пунктуации —
+    возвращает строку "(без текста)".
+    """
+    if not text:
+        return "(без текста)"
+    import re
+    # Удаляем токены, начинающиеся с '@' и состоящие из букв/цифр/нижнего подчёркивания/дефиса/точки
+    cleaned = re.sub(r"@([\w\-\.]+)", "", text, flags=re.UNICODE)
+    # Схлопываем повторяющиеся пробелы и обрезаем
+    cleaned = re.sub(r"\s+", " ", cleaned, flags=re.UNICODE).strip()
+    # Если после удаления ничего осмысленного не осталось — подставляем заглушку
+    if not cleaned:
+        return "(без текста)"
+    return cleaned

@@ -15,7 +15,7 @@ load_dotenv()
 
 # Импортируем наши модули
 from .db import db
-from .utils import is_in_quiet_hours, schedule_after
+from .utils import is_in_quiet_hours, schedule_after, remove_at_mentions
 
 # Конфигурация из переменных окружения
 REPEAT_INTERVAL_HOURS = float(os.getenv("REPEAT_INTERVAL_HOURS", "3"))
@@ -204,9 +204,10 @@ class NotificationWorker:
         task_id = record['task_id']
         last_mention_at = datetime.fromisoformat(record['last_mention_at'].replace('Z', '+00:00'))
         
-        # Получаем данные задачи (пока из комментария, в будущем из API Pyrus)
-        task_title = f"Задача #{task_id}"  # TODO: получать реальный title из Pyrus API
-        comment_text = record.get('last_mention_comment_text', 'Комментарий')
+        # Заголовок задачи берём из БД (сохранён при приёме вебхука)
+        task_title = record.get('task_title') or f"Задача #{task_id}"
+        raw_comment = record.get('last_mention_comment_text', 'Комментарий')
+        comment_text = remove_at_mentions(raw_comment)
         
         # Вычисляем просрочку (приводим к одной таймзоне)
         now_utc = now.astimezone(pytz.UTC) if now.tzinfo else pytz.UTC.localize(now)
@@ -216,8 +217,10 @@ class NotificationWorker:
         # Обрезаем тексты
         task_title_short = task_title[:TRUNC_TASK_TITLE_LEN]
         comment_short = comment_text[:TRUNC_COMMENT_LEN]
-        
-        return f"""👋 Вы просрочили ответ на {hours_overdue} ч
+        # Номер уведомления рассчитывается как times_sent + 1
+        notify_number = int(record.get('times_sent', 0)) + 1
+
+        return f"""👋 Вы просрочили ответ на {hours_overdue} ч — уведомление №{notify_number}
 Задача: «{task_title_short}»
 Комментарий: «{comment_short}»
 Открыть: https://pyrus.com/t#id{task_id}"""
@@ -228,19 +231,22 @@ class NotificationWorker:
         max_hours_overdue = 0
         lines = []
         
+        max_notify_num = 1
         for record in records:
             task_id = record['task_id']
             last_mention_at = datetime.fromisoformat(record['last_mention_at'].replace('Z', '+00:00'))
             
-            # Получаем данные задачи
-            task_title = f"Задача #{task_id}"  # TODO: получать реальный title
-            comment_text = record.get('last_mention_comment_text', 'Комментарий')
+            # Заголовок задачи берём из БД (сохранён при приёме вебхука)
+            task_title = record.get('task_title') or f"Задача #{task_id}"
+            raw_comment = record.get('last_mention_comment_text', 'Комментарий')
+            comment_text = remove_at_mentions(raw_comment)
             
             # Вычисляем просрочку (приводим к одной таймзоне)
             now_utc = now.astimezone(pytz.UTC) if now.tzinfo else pytz.UTC.localize(now)
             last_mention_utc = last_mention_at if last_mention_at.tzinfo else pytz.UTC.localize(last_mention_at)
             hours_overdue = int((now_utc - last_mention_utc).total_seconds() / 3600)
             max_hours_overdue = max(max_hours_overdue, hours_overdue)
+            max_notify_num = max(max_notify_num, int(record.get('times_sent', 0)) + 1)
             
             # Обрезаем тексты
             task_title_short = task_title[:TRUNC_TASK_TITLE_LEN]
@@ -254,7 +260,7 @@ class NotificationWorker:
             lines.append(task_line)
         
         # Собираем полное сообщение
-        header = f"""👋 По вам есть задачи без реакции
+        header = f"""👋 По вам есть задачи без реакции — уведомление №{max_notify_num}
 (вы просрочили ответ на {max_hours_overdue} ч):
 
 """

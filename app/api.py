@@ -196,6 +196,7 @@ async def _handle_comment_event(task, retry_header: str):
             # Планируем уведомление
             mention_time = latest_comment.create_date
             next_send_at = schedule_after(mention_time, DELAY_HOURS, TZ, QUIET_START, QUIET_END)
+            task_title = task.subject or f"Задача #{task.id}"
             
             db.upsert_or_shift_pending(
                 task_id=task.id,
@@ -203,7 +204,8 @@ async def _handle_comment_event(task, retry_header: str):
                 mention_ts=mention_time,
                 comment_id=latest_comment.id,
                 comment_text=latest_comment.text,
-                next_send_at=next_send_at
+                next_send_at=next_send_at,
+                task_title=task_title
             )
             
             db.log_event("mention_queued", {
@@ -250,11 +252,13 @@ async def _handle_comment_deleted_event(task, change):
         return
     
     comment_id = change["comment_id"]
-    
-    # Находим записи в очереди с этим комментарием
-    # В упрощённой версии удаляем все записи по задаче
-    # В полной версии нужно будет проверять last_mention_comment_id
-    
+
+    # Удаляем записи очереди, связанные с этим комментарием
+    try:
+        db.delete_pending_by_comment(task.id, comment_id)
+    except Exception as e:
+        print(f"⚠️ Ошибка удаления pending по удалённому комментарию {comment_id} в задаче {task.id}: {e}")
+
     db.log_event("comment_deleted", {
         "task_id": task.id,
         "comment_id": comment_id
