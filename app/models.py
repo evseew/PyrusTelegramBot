@@ -27,8 +27,8 @@ class PyrusComment(BaseModel):
     formatted_text: Optional[str] = None
     field_updates: Optional[List[Dict[str, Any]]] = None
     action: Optional[str] = None  # "finished", "reopened", etc.
-    approvals_added: Optional[List[Dict[str, Any]]] = None
-    approvals_removed: Optional[List[Dict[str, Any]]] = None
+    approvals_added: Optional[List[List[Dict[str, Any]]]] = None  # Список списков!
+    approvals_removed: Optional[List[List[Dict[str, Any]]]] = None  # Список списков!
     subscribers_added: Optional[List[Dict[str, Any]]] = None
     added_list_ids: Optional[List[int]] = None
     reassigned_to: Optional[Dict[str, Any]] = None
