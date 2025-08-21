@@ -1,5 +1,6 @@
 import json
 import os
+import logging
 from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, Request, HTTPException
@@ -17,6 +18,13 @@ from .models import PyrusWebhookPayload
 from .db import db
 
 app = FastAPI(title="Pyrus Telegram Bot", version="1.0.0")
+
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Создаём папку для логов
 LOGS_DIR = Path("logs")
@@ -44,13 +52,24 @@ async def pyrus_webhook(request: Request):
     
     Этап 3: реальная обработка упоминаний и реакций
     """
+    logger.info("=== WEBHOOK REQUEST START ===")
+    
     # Считываем сырое тело запроса
     raw_body = await request.body()
+    logger.info(f"Raw body length: {len(raw_body)} bytes")
     
     # Получаем заголовки
     headers = dict(request.headers)
     retry_header = headers.get("x-pyrus-retry", "1/1")
     signature_header = headers.get("x-pyrus-sig", "")
+    content_type = headers.get("content-type", "")
+    
+    logger.info(f"Headers received:")
+    logger.info(f"  Content-Type: {content_type}")
+    logger.info(f"  X-Pyrus-Retry: {retry_header}")
+    logger.info(f"  X-Pyrus-Sig: {signature_header[:20]}..." if signature_header else "  X-Pyrus-Sig: MISSING")
+    logger.info(f"  PYRUS_WEBHOOK_SECRET present: {bool(PYRUS_WEBHOOK_SECRET)}")
+    logger.info(f"  DEV_SKIP_PYRUS_SIG: {DEV_SKIP_PYRUS_SIG}")
     
     try:
         # 1. Проверяем подпись HMAC

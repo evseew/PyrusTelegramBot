@@ -29,15 +29,22 @@ def verify_pyrus_signature(raw_body: bytes, secret: str, dev_skip: bool = False,
         return False
     
     # Pyrus отправляет подпись в заголовке X-Pyrus-Sig
-    # Формат: sha1=<hex_hash>
-    expected_signature = "sha1=" + hmac.new(
+    # Возможные форматы: "sha1=<hex>" и просто "<hex>" (верхний/нижний регистр допускается)
+    provided = signature_header.strip()
+    provided_lower = provided.lower()
+    if provided_lower.startswith("sha1="):
+        provided_hex = provided_lower.split("=", 1)[1]
+    else:
+        provided_hex = provided_lower
+    
+    expected_hex = hmac.new(
         secret.encode('utf-8'),
         raw_body,
         hashlib.sha1
-    ).hexdigest()
+    ).hexdigest().lower()
     
     # Сравниваем подписи безопасным способом
-    return hmac.compare_digest(expected_signature, signature_header)
+    return hmac.compare_digest(expected_hex, provided_hex)
 
 
 def normalize_phone_e164(phone: str) -> Optional[str]:
