@@ -201,63 +201,71 @@ async def _handle_comment_event(task, actor, retry_header: str):
     """Обработка события комментария с упоминаниями"""
     if not task.comments:
         return
-    
-    # Берём последний комментарий
-    latest_comment = max(task.comments, key=lambda c: c.create_date)
-    
-    # Проверяем идемпотентность
-    if db.processed_comment_exists(task.id, latest_comment.id):
-        print(f"🔄 Комментарий {latest_comment.id} уже обработан (повтор)")
-        return
-    
-    # Отмечаем как обработанный
-    db.insert_processed_comment(task.id, latest_comment.id)
-    
-    # Обрабатываем упоминания
-    if latest_comment.mentions:
-        print(f"👥 Найдено {len(latest_comment.mentions)} упоминаний в задаче {task.id}")
-        
+
+    # Обрабатываем все комментарии с учётом идемпотентности
+    comments_sorted = sorted(task.comments, key=lambda c: c.create_date)
+    total_comments = len(comments_sorted)
+    with_mentions = 0
+    enqueued = 0
+
+    for comment in comments_sorted:
+        # Пропускаем уже обработанные комментарии
+        if db.processed_comment_exists(task.id, comment.id):
+            continue
+
+        # Отмечаем как обработанный, чтобы не вернуться к нему повторно
+        db.insert_processed_comment(task.id, comment.id)
+
+        if not comment.mentions:
+            continue
+
+        with_mentions += 1
+
         # Подготовим очищенный текст: удалим ФИО всех упомянутых пользователей, если они у нас есть
         mentioned_full_names = []
-        for user_id in latest_comment.mentions:
-            user = db.get_user(user_id)
+        for mentioned_user_id in comment.mentions:
+            user = db.get_user(mentioned_user_id)
             if user and user.full_name:
                 mentioned_full_names.append(user.full_name)
 
-        comment_text = latest_comment.text or "(системное действие)"
+        comment_text = comment.text or "(системное действие)"
         clean_comment_text = remove_full_names(comment_text, mentioned_full_names) if mentioned_full_names else comment_text
 
-        for user_id in latest_comment.mentions:
+        for mentioned_user_id in comment.mentions:
             # Проверяем, зарегистрирован ли пользователь
-            user = db.get_user(user_id)
+            user = db.get_user(mentioned_user_id)
             if not user:
-                print(f"⚠️ Пользователь {user_id} не зарегистрирован, пропускаем")
+                print(f"⚠️ Пользователь {mentioned_user_id} не зарегистрирован, пропускаем")
                 continue
-            
+
             # Планируем уведомление
-            mention_time = latest_comment.create_date
+            mention_time = comment.create_date
             next_send_at = schedule_after(mention_time, DELAY_HOURS, TZ, QUIET_START, QUIET_END)
             task_title = task.subject or f"Задача #{task.id}"
-            
+
             db.upsert_or_shift_pending(
                 task_id=task.id,
-                user_id=user_id,
+                user_id=mentioned_user_id,
                 mention_ts=mention_time,
-                comment_id=latest_comment.id,
+                comment_id=comment.id,
                 comment_text=comment_text,
                 next_send_at=next_send_at,
                 task_title=task_title,
                 comment_text_clean=clean_comment_text
             )
-            
+
             db.log_event("mention_queued", {
                 "task_id": task.id,
-                "user_id": user_id,
-                "comment_id": latest_comment.id,
+                "user_id": mentioned_user_id,
+                "comment_id": comment.id,
                 "next_send_at": next_send_at.isoformat()
             })
-            
-            print(f"📬 Запланировано уведомление для пользователя {user_id} на {next_send_at.strftime('%d.%m %H:%M')}")
+
+            enqueued += 1
+            print(f"📬 Запланировано уведомление для пользователя {mentioned_user_id} на {next_send_at.strftime('%d.%m %H:%M')}")
+
+    # Сводный лог по обработке
+    print(f"🧾 Обработка комментариев задачи {task.id}: всего={total_comments}, с_упоминаниями={with_mentions}, поставлено_в_очередь={enqueued}")
 
     # Любой комментарий от пользователя считается реакцией этого пользователя на задачу
     if actor and actor.id:
