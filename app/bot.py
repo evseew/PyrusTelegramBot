@@ -431,24 +431,52 @@ class PyrusTelegramBot:
                 
                 # Логируем всех найденных пользователей для диагностики
                 logger.info("👥 Найденные пользователи:")
+                matching_users = []
+                
                 for i, member in enumerate(members):
                     full_name = f"{member.get('first_name', '')} {member.get('last_name', '')}".strip()
                     logger.info(f"  {i+1}. ID: {member['id']}, Имя: {full_name}")
                     
-                    # Логируем все телефоны пользователя если есть
-                    if 'mobile_phone' in member:
+                    # Собираем все номера пользователя
+                    user_phones = []
+                    if 'mobile_phone' in member and member['mobile_phone']:
+                        user_phones.append(member['mobile_phone'])
                         logger.info(f"     Мобильный: {member['mobile_phone']}")
-                    if 'phone' in member:
+                    if 'phone' in member and member['phone']:
+                        user_phones.append(member['phone'])
                         logger.info(f"     Телефон: {member['phone']}")
+                    
+                    # Проверяем совпадение с искомым номером
+                    phone_match = False
+                    for user_phone in user_phones:
+                        # Нормализуем номер пользователя и сравниваем
+                        normalized_user_phone = normalize_phone_e164(user_phone)
+                        if normalized_user_phone == phone:
+                            phone_match = True
+                            logger.info(f"     ✅ НАЙДЕНО СОВПАДЕНИЕ: {user_phone} -> {normalized_user_phone}")
+                            break
+                    
+                    if phone_match:
+                        matching_users.append(member)
                 
-                # Возвращаем первого найденного пользователя
-                member = members[0]
+                # Проверяем результаты поиска
+                if not matching_users:
+                    logger.warning(f"❌ Среди {len(members)} найденных пользователей НЕТ ни одного с номером {phone}")
+                    logger.warning("🔍 API вернул пользователей, но ни у кого нет искомого номера!")
+                    return None
+                elif len(matching_users) > 1:
+                    logger.warning(f"⚠️ Найдено {len(matching_users)} пользователей с одинаковым номером!")
+                    for i, user in enumerate(matching_users):
+                        logger.warning(f"   {i+1}. ID: {user['id']}, Имя: {user.get('first_name', '')} {user.get('last_name', '')}")
+                
+                # Возвращаем первого пользователя с совпадающим номером
+                member = matching_users[0]
                 selected_user = {
                     'id': member['id'],
                     'full_name': f"{member.get('first_name', '')} {member.get('last_name', '')}".strip()
                 }
                 
-                logger.info(f"✅ Выбран пользователь: {selected_user}")
+                logger.info(f"✅ Выбран пользователь с совпадающим номером: {selected_user}")
                 return selected_user
                 
         except Exception as e:
