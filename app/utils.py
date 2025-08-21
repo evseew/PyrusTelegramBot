@@ -199,3 +199,25 @@ def remove_at_mentions(text: str) -> str:
     if not cleaned:
         return "(без текста)"
     return cleaned
+
+
+def remove_full_names(text: str, full_names: list[str]) -> str:
+    """
+    Удаляет из текста точные вхождения ФИО из списка full_names.
+    - Чувствительно к регистру (как в БД), но устойчиво к множественным пробелам.
+    - После удаления схлопывает пробелы; если пусто — возвращает "(без текста)".
+    """
+    if not text:
+        return "(без текста)"
+    cleaned = text
+    import re
+    for name in full_names:
+        if not name:
+            continue
+        # Экранируем имя для regex, заменяем группы пробелов на \s+
+        escaped = re.escape(name)
+        # Приводим повторяющиеся пробелы в имени к шаблону \s+
+        pattern = re.sub(r"\\\s+", r"\\s+", escaped)
+        cleaned = re.sub(pattern, "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned, flags=re.UNICODE).strip()
+    return cleaned or "(без текста)"

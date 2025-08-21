@@ -97,7 +97,8 @@ class Database:
     
     def upsert_or_shift_pending(self, task_id: int, user_id: int, mention_ts: datetime,
                                comment_id: int, comment_text: str, next_send_at: datetime,
-                               task_title: Optional[str] = None) -> None:
+                               task_title: Optional[str] = None,
+                               comment_text_clean: Optional[str] = None) -> None:
         """
         Создать или обновить запись в очереди уведомлений
         
@@ -119,7 +120,8 @@ class Database:
                 "last_mention_comment_id": comment_id,
                 "last_mention_comment_text": comment_text,
                 "next_send_at": next_send_at.isoformat(),
-                "task_title": task_title
+                "task_title": task_title,
+                "last_mention_comment_text_clean": comment_text_clean or comment_text
             }
             self.client.table("pending_notifications").update(data).eq("task_id", task_id).eq("user_id", user_id).execute()
         else:
@@ -133,7 +135,8 @@ class Database:
                 "last_mention_comment_text": comment_text,
                 "next_send_at": next_send_at.isoformat(),
                 "times_sent": 0,
-                "task_title": task_title
+                "task_title": task_title,
+                "last_mention_comment_text_clean": comment_text_clean or comment_text
             }
             self.client.table("pending_notifications").insert(data).execute()
     

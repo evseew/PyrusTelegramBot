@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Импортируем наши модули
-from .utils import verify_pyrus_signature, schedule_after
+from .utils import verify_pyrus_signature, schedule_after, remove_full_names
 from .models import PyrusWebhookPayload
 from .db import db
 
@@ -186,6 +186,15 @@ async def _handle_comment_event(task, retry_header: str):
     if latest_comment.mentions:
         print(f"👥 Найдено {len(latest_comment.mentions)} упоминаний в задаче {task.id}")
         
+        # Подготовим очищенный текст: удалим ФИО всех упомянутых пользователей, если они у нас есть
+        mentioned_full_names = []
+        for user_id in latest_comment.mentions:
+            user = db.get_user(user_id)
+            if user and user.full_name:
+                mentioned_full_names.append(user.full_name)
+
+        clean_comment_text = remove_full_names(latest_comment.text, mentioned_full_names) if mentioned_full_names else latest_comment.text
+
         for user_id in latest_comment.mentions:
             # Проверяем, зарегистрирован ли пользователь
             user = db.get_user(user_id)
@@ -205,7 +214,8 @@ async def _handle_comment_event(task, retry_header: str):
                 comment_id=latest_comment.id,
                 comment_text=latest_comment.text,
                 next_send_at=next_send_at,
-                task_title=task_title
+                task_title=task_title,
+                comment_text_clean=clean_comment_text
             )
             
             db.log_event("mention_queued", {

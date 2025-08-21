@@ -206,7 +206,8 @@ class NotificationWorker:
         
         # Заголовок задачи берём из БД (сохранён при приёме вебхука)
         task_title = record.get('task_title') or f"Задача #{task_id}"
-        raw_comment = record.get('last_mention_comment_text', 'Комментарий')
+        # Берём предочищенный текст, если он есть (очищен во время приёма вебхука от ФИО упомянутых)
+        raw_comment = record.get('last_mention_comment_text_clean') or record.get('last_mention_comment_text', 'Комментарий')
         comment_text = remove_at_mentions(raw_comment)
         
         # Вычисляем просрочку (приводим к одной таймзоне)
@@ -220,10 +221,17 @@ class NotificationWorker:
         # Номер уведомления рассчитывается как times_sent + 1
         notify_number = int(record.get('times_sent', 0)) + 1
 
-        return f"""👋 Вы просрочили ответ на {hours_overdue} ч — уведомление №{notify_number}
-Задача: «{task_title_short}»
-Комментарий: «{comment_short}»
-Открыть: https://pyrus.com/t#id{task_id}"""
+        # Выбираем эмодзи для времени
+        time_emoji = "⚡" if hours_overdue >= 24 else "⏰" if hours_overdue >= 3 else "🕐"
+        
+        return f"""👋 Привет! У вас есть непрочитанная задача 📋
+
+🎯 Задача: {task_title_short}
+💬 Комментарий: {comment_short}
+{time_emoji} Просрочка: {hours_overdue} часов
+🔔 Уведомление №{notify_number}
+
+🚀 Перейти к задаче: https://pyrus.com/t#id{task_id}"""
     
     def _format_multi_message(self, records: List[Dict[str, Any]], now: datetime) -> str:
         """Форматирование батч-сообщения"""
@@ -238,7 +246,7 @@ class NotificationWorker:
             
             # Заголовок задачи берём из БД (сохранён при приёме вебхука)
             task_title = record.get('task_title') or f"Задача #{task_id}"
-            raw_comment = record.get('last_mention_comment_text', 'Комментарий')
+            raw_comment = record.get('last_mention_comment_text_clean') or record.get('last_mention_comment_text', 'Комментарий')
             comment_text = remove_at_mentions(raw_comment)
             
             # Вычисляем просрочку (приводим к одной таймзоне)
@@ -252,16 +260,24 @@ class NotificationWorker:
             task_title_short = task_title[:TRUNC_TASK_TITLE_LEN]
             comment_short = comment_text[:TRUNC_COMMENT_LEN]
             
-            # Формируем строку задачи
-            task_line = f"""• «{task_title_short}» — комм.: «{comment_short}»
-  Просрочка: {hours_overdue} ч
-  Открыть: https://pyrus.com/t#id{task_id}"""
+            # Формируем строку задачи с эмодзи
+            task_emoji = "🔥" if hours_overdue >= 24 else "📌" if hours_overdue >= 3 else "💡"
+            task_line = f"""{task_emoji} «{task_title_short}»
+  💬 {comment_short}
+  ⏱️ {hours_overdue} ч назад
+  🔗 https://pyrus.com/t#id{task_id}"""
             
             lines.append(task_line)
         
+        # Выбираем эмодзи для максимальной просрочки
+        time_emoji = "⚡" if max_hours_overdue >= 24 else "⏰" if max_hours_overdue >= 3 else "🕐"
+        
         # Собираем полное сообщение
-        header = f"""👋 По вам есть задачи без реакции — уведомление №{max_notify_num}
-(вы просрочили ответ на {max_hours_overdue} ч):
+        task_count = len(records)
+        header = f"""👋 Привет! У вас есть {task_count} непрочитанных задач 📋
+
+{time_emoji} Максимальная просрочка: {max_hours_overdue} часов
+🔔 Уведомление №{max_notify_num}
 
 """
         
