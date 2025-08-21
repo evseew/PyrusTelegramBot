@@ -147,7 +147,7 @@ async def _process_webhook_event(payload: PyrusWebhookPayload, retry_header: str
         })
         
         if event_type == "comment":
-            await _handle_comment_event(task, retry_header)
+            await _handle_comment_event(task, actor, retry_header)
         elif event_type in ["task_updated", "form_updated"]:
             await _handle_task_update_event(task, actor, payload.change)
         elif event_type in ["task_closed", "task_canceled"]:
@@ -156,6 +156,18 @@ async def _process_webhook_event(payload: PyrusWebhookPayload, retry_header: str
             await _handle_comment_deleted_event(task, payload.change)
         else:
             print(f"⚠️ Неизвестный тип события: {event_type}")
+        
+        # Универсальная реакция: любое событие с actor (кроме закрытия/отмены) снимает его из очереди
+        try:
+            if actor and actor.id and event_type not in ["task_closed", "task_canceled"]:
+                db.delete_pending(task_id, actor.id)
+                db.log_event("user_reacted_generic", {
+                    "task_id": task_id,
+                    "user_id": actor.id,
+                    "event_type": event_type
+                })
+        except Exception as e:
+            print(f"⚠️ Ошибка универсальной очистки очереди по actor {actor.id if actor else None} для задачи {task_id}: {e}")
             
     except Exception as e:
         print(f"❌ Ошибка обработки вебхука: {e}")
@@ -166,7 +178,7 @@ async def _process_webhook_event(payload: PyrusWebhookPayload, retry_header: str
         })
 
 
-async def _handle_comment_event(task, retry_header: str):
+async def _handle_comment_event(task, actor, retry_header: str):
     """Обработка события комментария с упоминаниями"""
     if not task.comments:
         return
@@ -226,6 +238,19 @@ async def _handle_comment_event(task, retry_header: str):
             })
             
             print(f"📬 Запланировано уведомление для пользователя {user_id} на {next_send_at.strftime('%d.%m %H:%M')}")
+
+    # Любой комментарий от пользователя считается реакцией этого пользователя на задачу
+    if actor and actor.id:
+        try:
+            db.delete_pending(task.id, actor.id)
+            db.log_event("user_reacted", {
+                "task_id": task.id,
+                "user_id": actor.id,
+                "change_type": "comment"
+            })
+            print(f"✅ Пользователь {actor.id} оставил комментарий в задаче {task.id}, удалили из очереди")
+        except Exception as e:
+            print(f"⚠️ Ошибка удаления pending по реакции-комментарию пользователя {actor.id} в задаче {task.id}: {e}")
 
 
 async def _handle_task_update_event(task, actor, change):
