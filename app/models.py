@@ -18,10 +18,20 @@ class PyrusUser(BaseModel):
 class PyrusComment(BaseModel):
     """Комментарий в задаче Pyrus"""
     id: int
-    text: str
+    text: Optional[str] = None  # Может отсутствовать для системных действий
     create_date: datetime
-    author: PyrusUser
+    author: Optional[PyrusUser] = None  # Может отсутствовать для системных действий
     mentions: List[int] = Field(default_factory=list)  # user_id упомянутых
+    
+    # Дополнительные поля из реальных вебхуков
+    formatted_text: Optional[str] = None
+    field_updates: Optional[List[Dict[str, Any]]] = None
+    action: Optional[str] = None  # "finished", "reopened", etc.
+    approvals_added: Optional[List[Dict[str, Any]]] = None
+    approvals_removed: Optional[List[Dict[str, Any]]] = None
+    subscribers_added: Optional[List[Dict[str, Any]]] = None
+    added_list_ids: Optional[List[int]] = None
+    reassigned_to: Optional[Dict[str, Any]] = None
 
 
 class PyrusTask(BaseModel):

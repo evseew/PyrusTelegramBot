@@ -224,7 +224,8 @@ async def _handle_comment_event(task, actor, retry_header: str):
             if user and user.full_name:
                 mentioned_full_names.append(user.full_name)
 
-        clean_comment_text = remove_full_names(latest_comment.text, mentioned_full_names) if mentioned_full_names else latest_comment.text
+        comment_text = latest_comment.text or "(системное действие)"
+        clean_comment_text = remove_full_names(comment_text, mentioned_full_names) if mentioned_full_names else comment_text
 
         for user_id in latest_comment.mentions:
             # Проверяем, зарегистрирован ли пользователь
@@ -243,7 +244,7 @@ async def _handle_comment_event(task, actor, retry_header: str):
                 user_id=user_id,
                 mention_ts=mention_time,
                 comment_id=latest_comment.id,
-                comment_text=latest_comment.text,
+                comment_text=comment_text,
                 next_send_at=next_send_at,
                 task_title=task_title,
                 comment_text_clean=clean_comment_text
