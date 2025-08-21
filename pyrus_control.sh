@@ -84,10 +84,20 @@ stop_services() {
 # Функция перезапуска сервисов
 restart_services() {
     header "ПЕРЕЗАПУСК СЕРВИСОВ"
-    systemctl restart pyrus-api pyrus-bot pyrus-worker
+    
+    info "Останавливаем сервисы..."
+    systemctl stop pyrus-api pyrus-bot pyrus-worker
     sleep 2
-    systemctl status pyrus-api pyrus-bot pyrus-worker --no-pager -l
+    
+    info "Запускаем сервисы..."
+    systemctl start pyrus-api pyrus-bot pyrus-worker
+    sleep 5
+    
+    info "Проверяем статус..."
+    systemctl is-active pyrus-api pyrus-bot pyrus-worker
+    
     success "Все сервисы перезапущены"
+    warning "Для детального статуса используйте: ./pyrus_control.sh status"
 }
 
 # Функция показа статуса
