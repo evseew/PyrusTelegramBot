@@ -124,7 +124,8 @@ class PyrusTelegramBot:
         contact = update.message.contact
         chat_id = update.effective_chat.id
         
-        logger.info(f"Получен контакт {contact.phone_number} от chat_id {chat_id}")
+        logger.info(f"📱 Получен контакт от chat_id {chat_id}")
+        logger.info(f"📞 Исходный номер: {contact.phone_number}")
         
         # Убираем клавиатуру
         await update.message.reply_text(
@@ -135,7 +136,10 @@ class PyrusTelegramBot:
         try:
             # Нормализуем телефон
             normalized_phone = normalize_phone_e164(contact.phone_number)
+            logger.info(f"🔧 Нормализованный номер: {normalized_phone}")
+            
             if not normalized_phone:
+                logger.error(f"❌ Не удалось нормализовать номер: {contact.phone_number}")
                 await update.message.reply_text(
                     "❌ Не удалось обработать номер телефона. Попробуйте ещё раз с /start"
                 )
@@ -383,11 +387,15 @@ class PyrusTelegramBot:
             Словарь с данными пользователя или None
         """
         try:
+            logger.info(f"🔍 Начинаем поиск пользователя по телефону: {phone}")
+            
             # Получаем access_token
             access_token = await self._get_pyrus_access_token()
             if not access_token:
                 logger.error("Не удалось получить access_token для Pyrus API")
                 return None
+            
+            logger.info("✅ Access token получен успешно")
             
             # Ищем пользователя по телефону
             headers = {
@@ -395,12 +403,18 @@ class PyrusTelegramBot:
                 "Content-Type": "application/json"
             }
             
+            search_url = f"{PYRUS_API_URL}members"
+            search_params = {"mobile_phone": phone}
+            logger.info(f"🌐 Отправляем запрос: GET {search_url}?mobile_phone={phone}")
+            
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"{PYRUS_API_URL}members",
+                    search_url,
                     headers=headers,
-                    params={"mobile_phone": phone}
+                    params=search_params
                 )
+                
+                logger.info(f"📡 Ответ API: статус {response.status_code}")
                 
                 if response.status_code != 200:
                     logger.error(f"Ошибка поиска пользователя в Pyrus: {response.status_code} {response.text}")
@@ -409,19 +423,36 @@ class PyrusTelegramBot:
                 data = response.json()
                 members = data.get('members', [])
                 
+                logger.info(f"📊 API вернул {len(members)} пользователей")
+                
                 if not members:
-                    logger.info(f"Пользователь с телефоном {phone} не найден в Pyrus")
+                    logger.warning(f"❌ Пользователь с телефоном {phone} не найден в Pyrus")
                     return None
+                
+                # Логируем всех найденных пользователей для диагностики
+                logger.info("👥 Найденные пользователи:")
+                for i, member in enumerate(members):
+                    full_name = f"{member.get('first_name', '')} {member.get('last_name', '')}".strip()
+                    logger.info(f"  {i+1}. ID: {member['id']}, Имя: {full_name}")
+                    
+                    # Логируем все телефоны пользователя если есть
+                    if 'mobile_phone' in member:
+                        logger.info(f"     Мобильный: {member['mobile_phone']}")
+                    if 'phone' in member:
+                        logger.info(f"     Телефон: {member['phone']}")
                 
                 # Возвращаем первого найденного пользователя
                 member = members[0]
-                return {
+                selected_user = {
                     'id': member['id'],
                     'full_name': f"{member.get('first_name', '')} {member.get('last_name', '')}".strip()
                 }
                 
+                logger.info(f"✅ Выбран пользователь: {selected_user}")
+                return selected_user
+                
         except Exception as e:
-            logger.error(f"Ошибка при поиске пользователя в Pyrus: {e}")
+            logger.error(f"❌ Ошибка при поиске пользователя в Pyrus: {e}")
             return None
     
     async def _get_pyrus_access_token(self) -> Optional[str]:
