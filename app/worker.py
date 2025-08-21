@@ -283,8 +283,8 @@ class NotificationWorker:
                     task_id=task_id,
                     user_id=user_id,
                     now_ts=now_utc,
-                    ttl_hours=int(TTL_HOURS),
-                    repeat_interval_hours=int(REPEAT_INTERVAL_HOURS),
+                    ttl_hours=TTL_HOURS,
+                    repeat_interval_hours=REPEAT_INTERVAL_HOURS,
                     tz_name=TZ,
                     quiet_start=QUIET_START,
                     quiet_end=QUIET_END

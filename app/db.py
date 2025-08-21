@@ -172,7 +172,7 @@ class Database:
         return enriched_records
     
     def mark_sent_or_delete_by_ttl(self, task_id: int, user_id: int, now_ts: datetime, 
-                                  ttl_hours: int, repeat_interval_hours: int,
+                                  ttl_hours: float, repeat_interval_hours: float,
                                   tz_name: str, quiet_start: str, quiet_end: str) -> None:
         """
         Обновить запись после отправки или удалить по TTL
@@ -206,8 +206,10 @@ class Database:
             last_mention_at = pytz.UTC.localize(last_mention_at)
         
         # Проверяем TTL
-        if now_ts >= last_mention_at + timedelta(hours=ttl_hours):
+        expires_at = last_mention_at + timedelta(hours=ttl_hours)
+        if now_ts >= expires_at:
             # Удаляем по TTL
+            print(f"🧹 TTL expired for task {task_id}/user {user_id}: last_mention_at={last_mention_at.isoformat()}, ttl_hours={ttl_hours}")
             self.delete_pending(task_id, user_id)
         else:
             # Обновляем для следующей отправки
@@ -216,6 +218,7 @@ class Database:
                 "times_sent": row["times_sent"] + 1,
                 "next_send_at": next_send_at.isoformat()
             }
+            print(f"🔁 Reschedule task {task_id}/user {user_id}: times_sent->{row['times_sent'] + 1}, next_send_at={next_send_at.isoformat()}")
             self.client.table("pending_notifications").update(data).eq("task_id", task_id).eq("user_id", user_id).execute()
     
     # === Идемпотентность комментариев ===
