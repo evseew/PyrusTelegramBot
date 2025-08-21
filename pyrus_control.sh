@@ -35,6 +35,7 @@ show_help() {
     echo "  start          - Запустить все сервисы"
     echo "  stop           - Остановить все сервисы" 
     echo "  restart        - Перезапустить все сервисы"
+    echo "  force-restart  - Принудительный перезапуск (при зависании)"
     echo "  status         - Показать статус сервисов"
     echo ""
     echo "🔧 УПРАВЛЕНИЕ:"
@@ -85,19 +86,65 @@ stop_services() {
 restart_services() {
     header "ПЕРЕЗАПУСК СЕРВИСОВ"
     
-    info "Останавливаем сервисы..."
-    systemctl stop pyrus-api pyrus-bot pyrus-worker
-    sleep 2
+    info "Останавливаем сервисы с таймаутом..."
+    timeout 45 systemctl stop pyrus-worker pyrus-bot pyrus-api
     
-    info "Запускаем сервисы..."
-    systemctl start pyrus-api pyrus-bot pyrus-worker
-    sleep 5
+    # Проверяем, что процессы действительно остановлены
+    info "Проверяем остановку процессов..."
+    if pgrep -f "app\.(bot|api|worker)" > /dev/null; then
+        warning "Обнаружены зависшие процессы, принудительно завершаем..."
+        pkill -SIGTERM -f "app\.(bot|api|worker)"
+        sleep 5
+        pkill -SIGKILL -f "app\.(bot|api|worker)" 2>/dev/null || true
+    fi
+    
+    info "Перезагружаем конфигурацию systemd..."
+    systemctl daemon-reload
+    
+    info "Запускаем сервисы в правильном порядке..."
+    systemctl start pyrus-api
+    sleep 3
+    systemctl start pyrus-bot
+    sleep 3  
+    systemctl start pyrus-worker
+    sleep 3
     
     info "Проверяем статус..."
     systemctl is-active pyrus-api pyrus-bot pyrus-worker
     
     success "Все сервисы перезапущены"
     warning "Для детального статуса используйте: ./pyrus_control.sh status"
+}
+
+# Функция принудительного перезапуска
+force_restart_services() {
+    header "ПРИНУДИТЕЛЬНЫЙ ПЕРЕЗАПУСК СЕРВИСОВ"
+    
+    warning "Принудительно завершаем все Python процессы..."
+    pkill -SIGKILL -f python3 2>/dev/null || true
+    
+    info "Останавливаем systemd сервисы..."
+    systemctl stop pyrus-worker pyrus-bot pyrus-api 2>/dev/null || true
+    
+    info "Ждём 5 секунд..."
+    sleep 5
+    
+    info "Перезагружаем конфигурацию systemd..."
+    systemctl daemon-reload
+    
+    info "Запускаем сервисы..."
+    systemctl start pyrus-api
+    sleep 3
+    systemctl start pyrus-bot  
+    sleep 3
+    systemctl start pyrus-worker
+    sleep 3
+    
+    info "Проверяем статус..."
+    systemctl is-active pyrus-api pyrus-bot pyrus-worker
+    
+    success "Принудительный перезапуск завершён"
+    warning "Проверьте логи: ./pyrus_control.sh logs"
 }
 
 # Функция показа статуса
@@ -426,6 +473,9 @@ case "${1:-help}" in
         ;;
     cleanup)
         cleanup
+        ;;
+    force-restart)
+        force_restart_services
         ;;
     help|--help|-h)
         show_help
