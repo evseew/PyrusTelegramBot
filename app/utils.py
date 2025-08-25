@@ -228,3 +228,37 @@ def remove_full_names(text: str, full_names: list[str]) -> str:
         cleaned = re.sub(pattern, "", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned, flags=re.UNICODE).strip()
     return cleaned or "(без текста)"
+
+
+def calculate_fire_icons(hours_overdue: int, times_sent: int) -> str:
+    """
+    Рассчитывает количество огоньков для задачи на основе просрочки и количества отправленных уведомлений
+    
+    Args:
+        hours_overdue: Количество часов просрочки
+        times_sent: Количество уже отправленных уведомлений
+        
+    Returns:
+        Строка с огоньками (от 🔥 до 🔥🔥🔥🔥🔥)
+    """
+    # Определяем уровень на основе времени просрочки
+    time_level = 1
+    if hours_overdue >= 168:  # Неделя и больше
+        time_level = 5
+    elif hours_overdue >= 72:  # 3 дня
+        time_level = 4
+    elif hours_overdue >= 24:  # 1 день
+        time_level = 3
+    elif hours_overdue >= 6:   # 6 часов
+        time_level = 2
+    else:                      # Меньше 6 часов
+        time_level = 1
+    
+    # Определяем уровень на основе количества отправок (начинаем с 1, так как times_sent + 1)
+    notification_level = min(times_sent + 1, 5)
+    
+    # Берем максимум из двух факторов
+    fire_level = max(time_level, notification_level)
+    
+    # Возвращаем строку с огоньками
+    return "🔥" * fire_level

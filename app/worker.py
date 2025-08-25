@@ -15,7 +15,7 @@ load_dotenv()
 
 # Импортируем наши модули
 from .db import db
-from .utils import is_in_quiet_hours, schedule_after, remove_at_mentions
+from .utils import is_in_quiet_hours, schedule_after, remove_at_mentions, calculate_fire_icons
 
 # Конфигурация из переменных окружения
 REPEAT_INTERVAL_HOURS = float(os.getenv("REPEAT_INTERVAL_HOURS", "3"))
@@ -218,28 +218,23 @@ class NotificationWorker:
         # Обрезаем тексты
         task_title_short = task_title[:TRUNC_TASK_TITLE_LEN]
         comment_short = comment_text[:TRUNC_COMMENT_LEN]
-        # Номер уведомления рассчитывается как times_sent + 1
-        notify_number = int(record.get('times_sent', 0)) + 1
-
-        # Выбираем эмодзи для времени
-        time_emoji = "⚡" if hours_overdue >= 24 else "⏰" if hours_overdue >= 3 else "🕐"
         
-        return f"""👋 Привет! У вас есть непрочитанная задача 📋
+        # Рассчитываем количество огоньков
+        times_sent = int(record.get('times_sent', 0))
+        fire_icons = calculate_fire_icons(hours_overdue, times_sent)
+        
+        return f"""👋 Привет! У вас есть неотвеченная задача 📋
 
-🎯 Задача: {task_title_short}
-💬 Комментарий: {comment_short}
-{time_emoji} Просрочка: {hours_overdue} часов
-🔔 Уведомление №{notify_number}
-
-🚀 Перейти к задаче: https://pyrus.com/t#id{task_id}"""
+{fire_icons} 
+{task_title_short}
+💬 {comment_short}
+🔗 https://pyrus.com/t#id{task_id}"""
     
     def _format_multi_message(self, records: List[Dict[str, Any]], now: datetime) -> str:
         """Форматирование батч-сообщения"""
-        # Вычисляем максимальную просрочку
-        max_hours_overdue = 0
-        lines = []
+        # Подготавливаем данные для каждой задачи
+        task_data = []
         
-        max_notify_num = 1
         for record in records:
             task_id = record['task_id']
             last_mention_at = datetime.fromisoformat(record['last_mention_at'].replace('Z', '+00:00'))
@@ -253,33 +248,38 @@ class NotificationWorker:
             now_utc = now.astimezone(pytz.UTC) if now.tzinfo else pytz.UTC.localize(now)
             last_mention_utc = last_mention_at if last_mention_at.tzinfo else pytz.UTC.localize(last_mention_at)
             hours_overdue = int((now_utc - last_mention_utc).total_seconds() / 3600)
-            max_hours_overdue = max(max_hours_overdue, hours_overdue)
-            max_notify_num = max(max_notify_num, int(record.get('times_sent', 0)) + 1)
             
             # Обрезаем тексты
             task_title_short = task_title[:TRUNC_TASK_TITLE_LEN]
             comment_short = comment_text[:TRUNC_COMMENT_LEN]
             
-            # Формируем строку задачи с эмодзи
-            task_emoji = "🔥" if hours_overdue >= 24 else "📌" if hours_overdue >= 3 else "💡"
-            task_line = f"""{task_emoji} «{task_title_short}»
-  💬 {comment_short}
-  ⏱️ {hours_overdue} ч назад
-  🔗 https://pyrus.com/t#id{task_id}"""
+            # Рассчитываем количество огоньков для сортировки
+            times_sent = int(record.get('times_sent', 0))
+            fire_icons = calculate_fire_icons(hours_overdue, times_sent)
+            fire_level = len(fire_icons)  # Количество огоньков для сортировки
             
+            task_data.append({
+                'task_id': task_id,
+                'task_title_short': task_title_short,
+                'comment_short': comment_short,
+                'fire_icons': fire_icons,
+                'fire_level': fire_level
+            })
+        
+        # Сортируем по убыванию приоритета (больше огоньков = выше приоритет)
+        task_data.sort(key=lambda x: x['fire_level'], reverse=True)
+        
+        # Формируем строки задач
+        lines = []
+        for task in task_data:
+            task_line = f"""{task['fire_icons']} 
+{task['task_title_short']}
+💬 {task['comment_short']}
+🔗 https://pyrus.com/t#id{task['task_id']}"""
             lines.append(task_line)
         
-        # Выбираем эмодзи для максимальной просрочки
-        time_emoji = "⚡" if max_hours_overdue >= 24 else "⏰" if max_hours_overdue >= 3 else "🕐"
-        
-        # Собираем полное сообщение
-        task_count = len(records)
-        header = f"""👋 Привет! У вас есть {task_count} непрочитанных задач 📋
-
-{time_emoji} Максимальная просрочка: {max_hours_overdue} часов
-🔔 Уведомление №{max_notify_num}
-
-"""
+        # Собираем полное сообщение с единым заголовком
+        header = "👋 Привет! У вас есть неотвеченная задача 📋\n\n"
         
         return header + '\n\n'.join(lines)
     
