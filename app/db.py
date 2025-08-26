@@ -298,38 +298,72 @@ class Database:
         Returns:
             Список со статистикой по пользователям
         """
-        # В реальном SQL это было бы сложнее, но Supabase позволяет использовать функции
-        result = self.client.table("pending_notifications").select("""
-            user_id,
-            users!inner(full_name),
-            last_mention_at,
-            count:task_id
-        """).execute()
-        
-        # Обрабатываем результат в Python (в продакшене лучше сделать stored procedure)
-        stats = {}
-        now = datetime.now()
-        
-        for row in result.data:
-            user_id = row["user_id"]
-            last_mention = datetime.fromisoformat(row["last_mention_at"].replace('Z', '+00:00'))
-            hours_overdue = (now - last_mention).total_seconds() / 3600
+        try:
+            # Получаем все записи из очереди
+            pending_result = self.client.table("pending_notifications").select(
+                "user_id, last_mention_at, task_id"
+            ).execute()
             
-            if user_id not in stats:
-                stats[user_id] = {
-                    "user_id": user_id,
-                    "full_name": row["users"]["full_name"] if row["users"] else f"User {user_id}",
-                    "max_hours_overdue": hours_overdue,
-                    "task_count": 0
-                }
+            if not pending_result.data:
+                return []
             
-            stats[user_id]["task_count"] += 1
-            stats[user_id]["max_hours_overdue"] = max(stats[user_id]["max_hours_overdue"], hours_overdue)
-        
-        # Сортируем по максимальной просрочке
-        sorted_stats = sorted(stats.values(), key=lambda x: x["max_hours_overdue"], reverse=True)
-        
-        return sorted_stats[:limit]
+            # Получаем данные пользователей
+            users_result = self.client.table("users").select(
+                "user_id, full_name"
+            ).execute()
+            
+            # Создаем индекс пользователей для быстрого доступа
+            users_dict = {user["user_id"]: user for user in users_result.data}
+            
+            # Обрабатываем статистику в Python
+            stats = {}
+            now = datetime.now()
+            
+            for row in pending_result.data:
+                user_id = row["user_id"]
+                last_mention_str = row["last_mention_at"]
+                
+                # Парсим время упоминания
+                try:
+                    last_mention = datetime.fromisoformat(last_mention_str.replace('Z', '+00:00'))
+                except (ValueError, AttributeError):
+                    # Если не удалось распарсить время, пропускаем запись
+                    continue
+                
+                # Вычисляем просрочку в часах
+                hours_overdue = (now - last_mention).total_seconds() / 3600
+                
+                # Инициализируем или обновляем статистику пользователя
+                if user_id not in stats:
+                    user_info = users_dict.get(user_id, {})
+                    stats[user_id] = {
+                        "user_id": user_id,
+                        "full_name": user_info.get("full_name") or f"User {user_id}",
+                        "max_hours_overdue": hours_overdue,
+                        "task_count": 0
+                    }
+                
+                # Увеличиваем счетчик задач и обновляем максимальную просрочку
+                stats[user_id]["task_count"] += 1
+                stats[user_id]["max_hours_overdue"] = max(
+                    stats[user_id]["max_hours_overdue"], 
+                    hours_overdue
+                )
+            
+            # Сортируем по максимальной просрочке (убывание)
+            sorted_stats = sorted(
+                stats.values(), 
+                key=lambda x: x["max_hours_overdue"], 
+                reverse=True
+            )
+            
+            return sorted_stats[:limit]
+            
+        except Exception as e:
+            print(f"❌ Ошибка получения статистики очереди: {e}")
+            # Логируем ошибку в БД
+            self.log_event("queue_stats_error", {"error": str(e)})
+            return []
 
 
 # Глобальный экземпляр базы данных
