@@ -2,7 +2,7 @@
 Обёртки для работы с базой данных (Supabase)
 """
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 from supabase import create_client, Client
 from .models import User, PendingNotification
@@ -317,16 +317,20 @@ class Database:
             
             # Обрабатываем статистику в Python
             stats = {}
-            now = datetime.now()
+            # Используем aware-время в UTC, чтобы корректно вычитать даты
+            now = datetime.now(timezone.utc)
             
             for row in pending_result.data:
                 user_id = row["user_id"]
                 last_mention_str = row["last_mention_at"]
                 
-                # Парсим время упоминания
+                # Парсим время упоминания (делаем aware и приводим к UTC)
                 try:
-                    last_mention = datetime.fromisoformat(last_mention_str.replace('Z', '+00:00'))
-                except (ValueError, AttributeError):
+                    parsed = datetime.fromisoformat(str(last_mention_str).replace('Z', '+00:00'))
+                    if parsed.tzinfo is None:
+                        parsed = parsed.replace(tzinfo=timezone.utc)
+                    last_mention = parsed.astimezone(timezone.utc)
+                except (ValueError, AttributeError, TypeError):
                     # Если не удалось распарсить время, пропускаем запись
                     continue
                 
