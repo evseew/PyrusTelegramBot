@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Импортируем наши модули
-from .utils import verify_pyrus_signature, schedule_after, remove_full_names
+from .utils import verify_pyrus_signature, schedule_after, remove_full_names, extract_last_meaningful_paragraph
 from .models import PyrusWebhookPayload
 from .db import db
 
@@ -37,6 +37,47 @@ DELAY_HOURS = float(os.getenv("DELAY_HOURS", "3"))
 TZ = os.getenv("TZ", "Asia/Yekaterinburg")
 QUIET_START = os.getenv("QUIET_START", "22:00")
 QUIET_END = os.getenv("QUIET_END", "09:00")
+
+# События, которые НЕ считаем реакцией пользователя
+REACTION_EXCLUDE_KINDS = {"viewed", "opened", "read"}
+
+
+def _collect_reacting_user_ids(event_type: str, task, actor, change) -> set[int]:
+    """
+    Собирает множество user_id, которых следует считать отреагировавшими на событие.
+    Источники: payload.actor.id, все comment.author.id (для comment), а также поля из change.
+    """
+    reacting: set[int] = set()
+    try:
+        if actor and getattr(actor, "id", None):
+            reacting.add(int(actor.id))
+    except Exception:
+        pass
+
+    # Для событий комментариев добавляем авторов всех комментариев
+    if event_type == "comment" and task and getattr(task, "comments", None):
+        try:
+            for c in task.comments:
+                author_id = getattr(getattr(c, "author", None), "id", None)
+                if author_id:
+                    reacting.add(int(author_id))
+        except Exception:
+            pass
+
+    # Опционально извлекаем id из change, если он есть
+    try:
+        if change:
+            for key in ("user_id", "changed_by", "author_id", "actor_id"):
+                val = change.get(key)
+                if isinstance(val, int):
+                    reacting.add(val)
+                # Иногда значение приходит как строка
+                elif isinstance(val, str) and val.isdigit():
+                    reacting.add(int(val))
+    except Exception:
+        pass
+
+    return reacting
 
 
 @app.get("/health")
@@ -176,17 +217,28 @@ async def _process_webhook_event(payload: PyrusWebhookPayload, retry_header: str
         else:
             print(f"⚠️ Неизвестный тип события: {event_type}")
         
-        # Универсальная реакция: любое событие с actor (кроме закрытия/отмены) снимает его из очереди
+        # Универсальная реакция для любых событий (кроме comment, закрытия/отмены)
+        # Исключаем «просмотр/открытие/прочитал» по change.kind
         try:
-            if actor and actor.id and event_type not in ["task_closed", "task_canceled"]:
-                db.delete_pending(task_id, actor.id)
-                db.log_event("user_reacted_generic", {
-                    "task_id": task_id,
-                    "user_id": actor.id,
-                    "event_type": event_type
-                })
+            if event_type not in ["task_closed", "task_canceled", "comment"]:
+                change_kind = (payload.change.get("kind") if payload and payload.change else None)
+                if change_kind and str(change_kind).lower() in REACTION_EXCLUDE_KINDS:
+                    return
+                # Собираем всех возможных исполнителей и снимаем их из очереди
+                reacting_ids = _collect_reacting_user_ids(event_type, task, actor, payload.change)
+                for uid in reacting_ids:
+                    try:
+                        db.delete_pending(task_id, uid)
+                        db.log_event("user_reacted_generic", {
+                            "task_id": task_id,
+                            "user_id": uid,
+                            "event_type": event_type,
+                            "change_kind": change_kind
+                        })
+                    except Exception as e:
+                        print(f"⚠️ Ошибка универсальной очистки очереди по user {uid} для задачи {task_id}: {e}")
         except Exception as e:
-            print(f"⚠️ Ошибка универсальной очистки очереди по actor {actor.id if actor else None} для задачи {task_id}: {e}")
+            print(f"⚠️ Ошибка универсальной очистки очереди для задачи {task_id}: {e}")
             
     except Exception as e:
         print(f"❌ Ошибка обработки вебхука: {e}")
@@ -229,7 +281,10 @@ async def _handle_comment_event(task, actor, retry_header: str):
                 mentioned_full_names.append(user.full_name)
 
         comment_text = comment.text or "(системное действие)"
-        clean_comment_text = remove_full_names(comment_text, mentioned_full_names) if mentioned_full_names else comment_text
+        # 1) удаляем ФИО упомянутых
+        cleaned = remove_full_names(comment_text, mentioned_full_names) if mentioned_full_names else comment_text
+        # 2) берём последний осмысленный абзац, чтобы не склеивать цитаты и ответы
+        clean_comment_text = extract_last_meaningful_paragraph(cleaned)
 
         for mentioned_user_id in comment.mentions:
             # Проверяем, зарегистрирован ли пользователь
@@ -267,6 +322,26 @@ async def _handle_comment_event(task, actor, retry_header: str):
 
     # Сводный лог по обработке
     print(f"🧾 Обработка комментариев задачи {task.id}: всего={total_comments}, с_упоминаниями={with_mentions}, поставлено_в_очередь={enqueued}")
+
+    # Снимаем из очереди всех авторов комментариев (реакция пользователя),
+    # на случай если payload.actor отсутствует у события comment
+    try:
+        authors_to_clear = {
+            c.author.id for c in comments_sorted if getattr(c, "author", None) and getattr(c.author, "id", None)
+        }
+        for author_id in authors_to_clear:
+            try:
+                db.delete_pending(task.id, author_id)
+                db.log_event("user_reacted", {
+                    "task_id": task.id,
+                    "user_id": author_id,
+                    "change_type": "comment_author"
+                })
+                print(f"✅ Автор комментария {author_id} отреагировал в задаче {task.id}, удалили из очереди")
+            except Exception as e:
+                print(f"⚠️ Ошибка удаления pending по автору комментария {author_id} в задаче {task.id}: {e}")
+    except Exception as e:
+        print(f"⚠️ Ошибка обработки списка авторов комментариев для задачи {task.id}: {e}")
 
     # Любой комментарий от пользователя считается реакцией этого пользователя на задачу
     if actor and actor.id:
