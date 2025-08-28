@@ -26,6 +26,10 @@ QUIET_END = os.getenv("QUIET_END", "09:00")
 TRUNC_TASK_TITLE_LEN = int(os.getenv("TRUNC_TASK_TITLE_LEN", "50"))
 TRUNC_COMMENT_LEN = int(os.getenv("TRUNC_COMMENT_LEN", "50"))
 
+# Очистка логов: параметры по умолчанию
+LOGS_RETENTION_DAYS = int(os.getenv("LOGS_RETENTION_DAYS", "2"))
+LOGS_CLEANUP_INTERVAL_HOURS = int(os.getenv("LOGS_CLEANUP_INTERVAL_HOURS", "24"))
+
 # Режим работы (переключается автоматически при наличии BOT_TOKEN)
 DRY_RUN = not bool(os.getenv("BOT_TOKEN"))  # Если есть BOT_TOKEN, используем реальную отправку
 
@@ -101,6 +105,9 @@ class NotificationWorker:
         
         # 5. Обновляем записи (TTL, повторы)
         await self._update_records_after_sending(due_records, now)
+
+        # 6. Периодическая очистка логов в БД по retention
+        self._maybe_cleanup_logs(now)
     
     def _is_service_enabled(self) -> bool:
         """Проверка глобального флага service_enabled"""
@@ -314,6 +321,44 @@ class NotificationWorker:
                 
             except Exception as e:
                 print(f"⚠️ Ошибка обновления записи {task_id}/{user_id}: {e}")
+
+    def _maybe_cleanup_logs(self, now: datetime) -> None:
+        """Ежедневная очистка логов по системному времени и маркеру в settings.
+
+        - Храним в settings ключ `logs_last_cleanup_ts` (ISO время в UTC без tz).
+        - Если прошло >= LOGS_CLEANUP_INTERVAL_HOURS — вызываем db.cleanup_old_logs(LOGS_RETENTION_DAYS).
+        """
+        try:
+            # Приводим текущее время к UTC naive (совместимо с БД-методами)
+            now_utc_naive = now.astimezone(pytz.UTC).replace(tzinfo=None)
+
+            last_cleanup_str = db.settings_get('logs_last_cleanup_ts')
+            should_run = True
+            if last_cleanup_str:
+                try:
+                    parsed = datetime.fromisoformat(str(last_cleanup_str).replace('Z', '+00:00'))
+                    last_cleanup_utc_naive = (
+                        parsed if parsed.tzinfo is None else parsed.astimezone(pytz.UTC).replace(tzinfo=None)
+                    )
+                    hours_since = (now_utc_naive - last_cleanup_utc_naive).total_seconds() / 3600
+                    should_run = hours_since >= LOGS_CLEANUP_INTERVAL_HOURS
+                except Exception:
+                    # Если не смогли распарсить — запустим очистку и перезапишем метку
+                    should_run = True
+
+            if not should_run:
+                return
+
+            # Выполняем очистку логов старше retention
+            db.cleanup_old_logs(days=LOGS_RETENTION_DAYS)
+            db.settings_set('logs_last_cleanup_ts', now_utc_naive.isoformat())
+            db.log_event("logs_cleanup", {
+                "retention_days": LOGS_RETENTION_DAYS,
+                "interval_hours": LOGS_CLEANUP_INTERVAL_HOURS
+            })
+            print(f"🧹 Очистка логов завершена: retention={LOGS_RETENTION_DAYS}d, next in {LOGS_CLEANUP_INTERVAL_HOURS}h")
+        except Exception as e:
+            print(f"⚠️ Ошибка очистки логов: {e}")
 
 
 # Функция для запуска воркера
