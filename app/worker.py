@@ -16,6 +16,7 @@ load_dotenv()
 # Импортируем наши модули
 from .db import db
 from .utils import is_in_quiet_hours, schedule_after, remove_at_mentions, calculate_fire_icons
+from .schedulers.form_checks import run_slot
 
 # Конфигурация из переменных окружения
 REPEAT_INTERVAL_HOURS = float(os.getenv("REPEAT_INTERVAL_HOURS", "3"))
@@ -79,6 +80,13 @@ class NotificationWorker:
         """Один цикл обработки уведомлений"""
         now = datetime.now(self.timezone)
         
+        # 0. Пробуем запустить проверки формы 2304918 по слотам (21:00 сегодня / 12:00 вчера)
+        try:
+            await self._maybe_run_form_checks(now)
+        except Exception as e:
+            print(f"⚠️ Ошибка запуска форм-проверок: {e}")
+            db.log_event("form_checks_trigger_error", {"error": str(e)})
+
         # 1. Проверяем глобальный флаг service_enabled
         if not self._is_service_enabled():
             print(f"⏸️  Сервис отключен (service_enabled=false)")
@@ -109,6 +117,42 @@ class NotificationWorker:
         # 6. Периодическая очистка логов в БД по retention
         self._maybe_cleanup_logs(now)
     
+    async def _maybe_run_form_checks(self, now: datetime) -> None:
+        """Запуск слотов проверок формы один раз в сутки.
+
+        Храним в settings ключи:
+          - form_checks_last_today21 = YYYY-MM-DD
+          - form_checks_last_yesterday12 = YYYY-MM-DD
+        """
+        try:
+            today_hour = int(os.getenv("TODAY_CHECK_HOUR", "21"))
+            yesterday_hour = int(os.getenv("YESTERDAY_CHECK_HOUR", "12"))
+
+            # Запускать в первые 5 минут часа, чтобы избежать повторов
+            in_window = now.minute < 5
+
+            # today21 slot
+            if now.hour == today_hour and in_window:
+                last = db.settings_get('form_checks_last_today21')
+                today_str = now.date().isoformat()
+                if last != today_str:
+                    db.settings_set('form_checks_last_today21', today_str)
+                    # Запускаем асинхронно, чтобы не блокировать цикл
+                    asyncio.create_task(run_slot("today21"))
+                    print("🧪 form_checks: запущен слот today21")
+
+            # yesterday12 slot
+            if now.hour == yesterday_hour and in_window:
+                last_y = db.settings_get('form_checks_last_yesterday12')
+                today_str = now.date().isoformat()
+                if last_y != today_str:
+                    db.settings_set('form_checks_last_yesterday12', today_str)
+                    asyncio.create_task(run_slot("yesterday12"))
+                    print("🧪 form_checks: запущен слот yesterday12")
+        except Exception as e:
+            print(f"⚠️ Ошибка _maybe_run_form_checks: {e}")
+            db.log_event("form_checks_internal_error", {"error": str(e)})
+
     def _is_service_enabled(self) -> bool:
         """Проверка глобального флага service_enabled"""
         try:
@@ -152,7 +196,39 @@ class NotificationWorker:
             telegram_id = user_data.get('telegram_id')
             full_name = user_data.get('full_name', f'User {user_id}')
             
-            # Формируем сообщение
+            # Если запись предформатированная — отправляем как есть
+            if any(r.get('is_preformatted') for r in records):
+                for r in records:
+                    if not r.get('is_preformatted'):
+                        continue
+                    text = r.get('preformatted_text') or ''
+                    if not text:
+                        continue
+                    if DRY_RUN:
+                        print(f"📝 [DRY RUN] Предформат для {full_name} (TG:{telegram_id}):\n   {text[:120]}...")
+                        db.log_event("notify_dry_run_preformatted", {
+                            "user_id": user_id,
+                            "telegram_id": telegram_id,
+                            "full_name": full_name,
+                            "slot": r.get('slot'),
+                        })
+                    else:
+                        success = await self._send_preformatted(telegram_id, text)
+                        if success:
+                            db.log_event("notify_sent_preformatted", {
+                                "user_id": user_id,
+                                "telegram_id": telegram_id,
+                                "slot": r.get('slot')
+                            })
+                        else:
+                            db.log_event("notify_failed_preformatted", {
+                                "user_id": user_id,
+                                "telegram_id": telegram_id,
+                                "slot": r.get('slot')
+                            })
+                return
+
+            # Формируем сообщение (старая ветка)
             message = self._format_batch_message(records, now)
             
             # В режиме DRY_RUN только логируем
@@ -297,6 +373,19 @@ class NotificationWorker:
         else:
             print(f"⚠️ Telegram бот недоступен для отправки в chat {telegram_id}")
             return False
+
+    async def _send_preformatted(self, telegram_id: int, text: str) -> bool:
+        """Отправка длинного предформатированного текста с разбиением по 4000 символов."""
+        if not self.telegram_bot:
+            print(f"⚠️ Telegram бот недоступен для отправки в chat {telegram_id}")
+            return False
+        CHUNK = 3800
+        parts = [text[i:i+CHUNK] for i in range(0, len(text), CHUNK)] or [text]
+        ok_all = True
+        for p in parts:
+            ok = await self.telegram_bot.send_notification(telegram_id, p)
+            ok_all = ok_all and ok
+        return ok_all
     
     async def _update_records_after_sending(self, records: List[Dict[str, Any]], now: datetime):
         """Обновление записей после отправки (TTL, повторы)"""

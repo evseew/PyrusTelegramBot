@@ -140,6 +140,52 @@ class Database:
                 "last_mention_comment_text_clean": comment_text_clean or comment_text
             }
             self.client.table("pending_notifications").insert(data).execute()
+
+    def enqueue_preformatted(self,
+                             task_id: int,
+                             user_id: int,
+                             send_at: datetime,
+                             slot: str,
+                             message_text: str,
+                             dedupe_hash: str) -> bool:
+        """
+        Поставить предформатированное сообщение в очередь с идемпотентностью.
+
+        Идемпотентность: ищем существующую запись с тем же (task_id, user_id) и тем же dedupe_hash
+        в last_mention_comment_text. Если совпадает — не дублируем.
+        """
+        # Проверка на существование по ключу и хэшу
+        existing = self.client.table("pending_notifications").select(
+            "task_id, user_id, last_mention_comment_text"
+        ).eq("task_id", task_id).eq("user_id", user_id).execute()
+
+        if existing.data:
+            row = existing.data[0]
+            if str(row.get("last_mention_comment_text") or "") == dedupe_hash:
+                return False
+
+        now_iso = datetime.now().isoformat()
+        data = {
+            "task_id": task_id,
+            "user_id": user_id,
+            "first_mention_at": now_iso,
+            "last_mention_at": now_iso,
+            "last_mention_comment_id": None,
+            "last_mention_comment_text": dedupe_hash,
+            "next_send_at": send_at.isoformat(),
+            "times_sent": 0,
+            "preformatted_text": message_text,
+            "is_preformatted": True,
+            "slot": slot,
+        }
+
+        if existing.data:
+            # Обновляем существующую запись
+            self.client.table("pending_notifications").update(data).eq("task_id", task_id).eq("user_id", user_id).execute()
+        else:
+            # Создаём новую
+            self.client.table("pending_notifications").insert(data).execute()
+        return True
     
     def delete_pending(self, task_id: int, user_id: int) -> None:
         """Удалить запись из очереди для конкретного пользователя"""
