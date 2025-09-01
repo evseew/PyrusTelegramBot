@@ -34,6 +34,7 @@ load_dotenv()
 # Наши модули
 from .db import db
 from .utils import normalize_phone_e164
+from .pyrus_client import PyrusClient
 
 # Конфигурация
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -485,36 +486,14 @@ class PyrusTelegramBot:
     
     async def _get_pyrus_access_token(self) -> Optional[str]:
         """
-        Получение access_token для Pyrus API
-        
-        Returns:
-            Access token или None в случае ошибки
+        Получение access_token для Pyrus API через общий PyrusClient.
+        Зачем: убрать дублирование логики и единообразно кешировать токен.
         """
-        if not PYRUS_LOGIN or not PYRUS_SECURITY_KEY:
-            logger.error("PYRUS_LOGIN или PYRUS_SECURITY_KEY не установлены")
-            return None
-        
         try:
-            auth_data = {
-                "login": PYRUS_LOGIN,
-                "security_key": PYRUS_SECURITY_KEY
-            }
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{PYRUS_API_URL}auth",
-                    json=auth_data
-                )
-                
-                if response.status_code != 200:
-                    logger.error(f"Ошибка авторизации в Pyrus: {response.status_code} {response.text}")
-                    return None
-                
-                data = response.json()
-                return data.get('access_token')
-                
+            client = PyrusClient()
+            return await client.get_token()
         except Exception as e:
-            logger.error(f"Ошибка при получении access_token: {e}")
+            logger.error(f"Ошибка при получении access_token через PyrusClient: {e}")
             return None
     
     # === ОТПРАВКА УВЕДОМЛЕНИЙ ===
@@ -535,8 +514,7 @@ class PyrusTelegramBot:
             try:
                 await self.application.bot.send_message(
                     chat_id=telegram_id,
-                    text=message,
-                    parse_mode='HTML'
+                    text=message
                 )
                 return True
                 
@@ -587,53 +565,21 @@ class PyrusTelegramBot:
     # === ЗАПУСК ===
     
     async def start_polling(self):
-        """Запуск бота в режиме long polling"""
+        """Запуск бота (PTB v20+): используем run_polling без Updater.
+        Зачем: совместимость с v20 и упрощение жизненного цикла.
+        """
         logger.info("🚀 Запуск Telegram бота...")
         logger.info(f"👥 Админы: {ADMIN_IDS}")
-        
         try:
-            # Инициализируем и запускаем бота
-            await self.application.initialize()
-            await self.application.start()
-            await self.application.updater.start_polling()
-            
-            logger.info("✅ Telegram бот запущен и слушает обновления")
-            
-            # Держим процесс активным (новый API v20+)
-            import signal
-            import asyncio
-            
-            # Создаем задачу для обработки сигналов
-            stop_signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
-            loop = asyncio.get_running_loop()
-            
-            # Функция для graceful shutdown
-            def handle_shutdown(sig):
-                logger.info(f"🛑 Получен сигнал {sig.name}, остановка бота...")
-                loop.create_task(self.shutdown())
-            
-            for sig in stop_signals:
-                loop.add_signal_handler(sig, handle_shutdown, sig)
-            
-            # Бесконечный цикл с проверкой
-            try:
-                while True:
-                    await asyncio.sleep(1)
-            except asyncio.CancelledError:
-                logger.info("🔄 Задача отменена, завершение работы...")
-                raise
-            
+            await self.application.run_polling(close_loop=False)
         except Exception as e:
             logger.error(f"❌ Ошибка запуска бота: {e}")
             raise
-        finally:
-            await self.application.stop()
     
     async def shutdown(self):
         """Graceful shutdown бота"""
         logger.info("🛑 Остановка Telegram бота...")
         try:
-            await self.application.updater.stop()
             await self.application.stop()
         except Exception as e:
             logger.error(f"❌ Ошибка при остановке: {e}")

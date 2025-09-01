@@ -214,21 +214,34 @@ class Database:
         """
         # Получаем готовые записи
         result = self.client.table("pending_notifications").select("*").lte("next_send_at", now_ts.isoformat()).execute()
-        
-        # Дополняем данными пользователей
+
+        rows = result.data or []
+        if not rows:
+            return []
+
+        # Батч-выборка пользователей
+        unique_user_ids = sorted({r['user_id'] for r in rows})
+        users_map: Dict[int, Dict[str, Any]] = {}
+        # Supabase Python SDK не поддерживает eq(..., list), поэтому делаем несколько чанков
+        CHUNK = 200
+        for i in range(0, len(unique_user_ids), CHUNK):
+            chunk = unique_user_ids[i:i+CHUNK]
+            # Соберём OR-фильтр
+            # Пример: .or_("user_id.eq.1,user_id.eq.2")
+            or_filter = ",".join([f"user_id.eq.{uid}" for uid in chunk])
+            users_res = self.client.table("users").select("user_id, telegram_id, full_name").or_(or_filter).execute()
+            for u in users_res.data or []:
+                users_map[int(u["user_id"])] = {"telegram_id": u.get("telegram_id"), "full_name": u.get("full_name")}
+
+        # Обогащаем
         enriched_records = []
-        for record in result.data:
-            user_id = record['user_id']
-            
-            # Получаем данные пользователя
-            user_result = self.client.table("users").select("telegram_id, full_name").eq("user_id", user_id).execute()
-            
-            if user_result.data:
-                # Добавляем данные пользователя к записи
-                record['users'] = user_result.data[0]
-                enriched_records.append(record)
-            # Пропускаем записи без пользователей
-        
+        for record in rows:
+            user_info = users_map.get(int(record['user_id']))
+            if not user_info:
+                continue
+            record['users'] = user_info
+            enriched_records.append(record)
+
         return enriched_records
     
     def mark_sent_or_delete_by_ttl(self, task_id: int, user_id: int, now_ts: datetime, 

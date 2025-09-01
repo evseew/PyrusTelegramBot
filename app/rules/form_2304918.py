@@ -56,11 +56,14 @@ def _as_date_str(value: Any) -> Optional[str]:
 
 
 def _is_empty_choice(value: Any) -> bool:
-    # Пусто, если None, пустая строка или чекбокс unchecked/пустой список
+    # Пусто, если None, пустая строка, булево False или чекбокс unchecked/пустой список
     if value is None:
         return True
     if isinstance(value, str):
         return len(value.strip()) == 0
+    if isinstance(value, bool):
+        # Для чекбоксов False трактуем как «не отмечено»
+        return value is False
     if isinstance(value, dict):
         if value.get("checkmark") == "unchecked":
             return True
@@ -76,8 +79,12 @@ def _text_equals(value: Any, target: str) -> bool:
         return False
     if isinstance(value, str):
         return value.strip().lower() == target.strip().lower()
+    if isinstance(value, bool):
+        # Нормализуем булевы в текст «да/нет» для сравнения
+        normalized = "да" if value else "нет"
+        return normalized == target.strip().lower()
     if isinstance(value, dict):
-        text = value.get("text") or value.get("value")
+        text = value.get("text") or value.get("value") or value.get("name")
         if isinstance(text, str):
             return text.strip().lower() == target.strip().lower()
     return False

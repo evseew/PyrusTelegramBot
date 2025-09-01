@@ -37,6 +37,12 @@ DELAY_HOURS = float(os.getenv("DELAY_HOURS", "3"))
 TZ = os.getenv("TZ", "Asia/Yekaterinburg")
 QUIET_START = os.getenv("QUIET_START", "22:00")
 QUIET_END = os.getenv("QUIET_END", "09:00")
+ENV = os.getenv("ENV", "development").lower()
+LOG_WEBHOOK_PAYLOAD = os.getenv("LOG_WEBHOOK_PAYLOAD", "true").lower() == "true"
+
+# Безопасность: запрещаем отключение подписи в production
+if ENV == "production" and DEV_SKIP_PYRUS_SIG:
+    raise RuntimeError("DEV_SKIP_PYRUS_SIG=true запрещён в production")
 
 # События, которые НЕ считаем реакцией пользователя
 REACTION_EXCLUDE_KINDS = {"viewed", "opened", "read"}
@@ -158,22 +164,34 @@ async def _log_webhook_async(raw_body: bytes, retry_header: str, status: str = "
         today = datetime.now().strftime("%Y%m%d")
         log_file = LOGS_DIR / f"pyrus_raw_{today}.ndjson"
         
-        # Пытаемся распарсить JSON
+        # Пытаемся распарсить JSON (или маскируем при выключенном логировании payload)
         try:
-            payload = json.loads(raw_body.decode('utf-8'))
+            parsed = json.loads(raw_body.decode('utf-8'))
             is_valid_json = True
         except (json.JSONDecodeError, UnicodeDecodeError):
-            payload = {"raw_body": raw_body.hex(), "error": "invalid_json"}
+            parsed = None
             is_valid_json = False
         
         # Создаём запись для лога
-        log_entry = {
+        base_entry = {
             "timestamp": datetime.now().isoformat(),
             "retry_header": retry_header,
             "status": status,
             "is_valid_json": is_valid_json,
-            "payload": payload
         }
+        if LOG_WEBHOOK_PAYLOAD:
+            log_entry = {
+                **base_entry,
+                "payload": (parsed if parsed is not None else {"raw_body": raw_body.hex(), "error": "invalid_json"})
+            }
+        else:
+            log_entry = {
+                **base_entry,
+                "payload": {
+                    "note": "payload logging disabled",
+                    "size_bytes": len(raw_body)
+                }
+            }
         
         # Записываем в файл (NDJSON формат)
         async with aiofiles.open(log_file, "a", encoding="utf-8") as f:
@@ -199,7 +217,8 @@ async def _process_webhook_event(payload: PyrusWebhookPayload, retry_header: str
         actor = payload.actor
         
         # Логируем событие
-        db.log_event("webhook_received", {
+        # Оборачиваем синхронный вызов БД в отдельный поток, чтобы не блокировать event loop
+        await asyncio.to_thread(db.log_event, "webhook_received", {
             "event": event_type,
             "task_id": task_id,
             "actor_id": actor.id if actor else None,
@@ -228,8 +247,8 @@ async def _process_webhook_event(payload: PyrusWebhookPayload, retry_header: str
                 reacting_ids = _collect_reacting_user_ids(event_type, task, actor, payload.change)
                 for uid in reacting_ids:
                     try:
-                        db.delete_pending(task_id, uid)
-                        db.log_event("user_reacted_generic", {
+                        await asyncio.to_thread(db.delete_pending, task_id, uid)
+                        await asyncio.to_thread(db.log_event, "user_reacted_generic", {
                             "task_id": task_id,
                             "user_id": uid,
                             "event_type": event_type,
@@ -242,7 +261,7 @@ async def _process_webhook_event(payload: PyrusWebhookPayload, retry_header: str
             
     except Exception as e:
         print(f"❌ Ошибка обработки вебхука: {e}")
-        db.log_event("webhook_error", {
+        await asyncio.to_thread(db.log_event, "webhook_error", {
             "error": str(e),
             "event": payload.event if payload else "unknown",
             "task_id": payload.task.id if payload and payload.task else None
@@ -262,11 +281,11 @@ async def _handle_comment_event(task, actor, retry_header: str):
 
     for comment in comments_sorted:
         # Пропускаем уже обработанные комментарии
-        if db.processed_comment_exists(task.id, comment.id):
+        if await asyncio.to_thread(db.processed_comment_exists, task.id, comment.id):
             continue
 
         # Отмечаем как обработанный, чтобы не вернуться к нему повторно
-        db.insert_processed_comment(task.id, comment.id)
+        await asyncio.to_thread(db.insert_processed_comment, task.id, comment.id)
 
         if not comment.mentions:
             continue
@@ -276,7 +295,7 @@ async def _handle_comment_event(task, actor, retry_header: str):
         # Подготовим очищенный текст: удалим ФИО всех упомянутых пользователей, если они у нас есть
         mentioned_full_names = []
         for mentioned_user_id in comment.mentions:
-            user = db.get_user(mentioned_user_id)
+            user = await asyncio.to_thread(db.get_user, mentioned_user_id)
             if user and user.full_name:
                 mentioned_full_names.append(user.full_name)
 
@@ -288,7 +307,7 @@ async def _handle_comment_event(task, actor, retry_header: str):
 
         for mentioned_user_id in comment.mentions:
             # Проверяем, зарегистрирован ли пользователь
-            user = db.get_user(mentioned_user_id)
+            user = await asyncio.to_thread(db.get_user, mentioned_user_id)
             if not user:
                 print(f"⚠️ Пользователь {mentioned_user_id} не зарегистрирован, пропускаем")
                 continue
@@ -299,7 +318,8 @@ async def _handle_comment_event(task, actor, retry_header: str):
             # Берём subject, а для задач-форм fallback на text
             task_title = (task.subject or task.text) or f"Задача #{task.id}"
 
-            db.upsert_or_shift_pending(
+            await asyncio.to_thread(
+                db.upsert_or_shift_pending,
                 task_id=task.id,
                 user_id=mentioned_user_id,
                 mention_ts=mention_time,
@@ -310,7 +330,7 @@ async def _handle_comment_event(task, actor, retry_header: str):
                 comment_text_clean=clean_comment_text
             )
 
-            db.log_event("mention_queued", {
+            await asyncio.to_thread(db.log_event, "mention_queued", {
                 "task_id": task.id,
                 "user_id": mentioned_user_id,
                 "comment_id": comment.id,
@@ -331,8 +351,8 @@ async def _handle_comment_event(task, actor, retry_header: str):
         }
         for author_id in authors_to_clear:
             try:
-                db.delete_pending(task.id, author_id)
-                db.log_event("user_reacted", {
+                await asyncio.to_thread(db.delete_pending, task.id, author_id)
+                await asyncio.to_thread(db.log_event, "user_reacted", {
                     "task_id": task.id,
                     "user_id": author_id,
                     "change_type": "comment_author"
@@ -346,8 +366,8 @@ async def _handle_comment_event(task, actor, retry_header: str):
     # Любой комментарий от пользователя считается реакцией этого пользователя на задачу
     if actor and actor.id:
         try:
-            db.delete_pending(task.id, actor.id)
-            db.log_event("user_reacted", {
+            await asyncio.to_thread(db.delete_pending, task.id, actor.id)
+            await asyncio.to_thread(db.log_event, "user_reacted", {
                 "task_id": task.id,
                 "user_id": actor.id,
                 "change_type": "comment"
@@ -363,9 +383,9 @@ async def _handle_task_update_event(task, actor, change):
         return
     
     # Это реакция пользователя - удаляем его из очереди
-    db.delete_pending(task.id, actor.id)
+    await asyncio.to_thread(db.delete_pending, task.id, actor.id)
     
-    db.log_event("user_reacted", {
+    await asyncio.to_thread(db.log_event, "user_reacted", {
         "task_id": task.id,
         "user_id": actor.id,
         "change_type": change.get("kind") if change else "unknown"
@@ -376,9 +396,9 @@ async def _handle_task_update_event(task, actor, change):
 
 async def _handle_task_closed_event(task_id: int):
     """Обработка закрытия/отмены задачи"""
-    db.delete_pending_by_task(task_id)
+    await asyncio.to_thread(db.delete_pending_by_task, task_id)
     
-    db.log_event("task_closed", {
+    await asyncio.to_thread(db.log_event, "task_closed", {
         "task_id": task_id
     })
     
@@ -394,11 +414,11 @@ async def _handle_comment_deleted_event(task, change):
 
     # Удаляем записи очереди, связанные с этим комментарием
     try:
-        db.delete_pending_by_comment(task.id, comment_id)
+        await asyncio.to_thread(db.delete_pending_by_comment, task.id, comment_id)
     except Exception as e:
         print(f"⚠️ Ошибка удаления pending по удалённому комментарию {comment_id} в задаче {task.id}: {e}")
 
-    db.log_event("comment_deleted", {
+    await asyncio.to_thread(db.log_event, "comment_deleted", {
         "task_id": task.id,
         "comment_id": comment_id
     })

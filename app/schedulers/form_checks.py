@@ -25,6 +25,7 @@ import pytz
 from ..db import db
 from ..pyrus_client import PyrusClient
 from ..rules.form_2304918 import check_rules, TEACHER_ID
+import os
 
 
 def _tz_now(tz_name: str) -> datetime:
@@ -54,8 +55,8 @@ def _extract_teacher_full_name(task_fields: List[Dict[str, Any]]) -> str:
             v = f.get("value")
             if isinstance(v, dict):
                 # попытаемся достать понятное имя
-                # каталог/справочник может хранить как text/value
-                return str(v.get("text") or v.get("value") or "").strip()
+                # каталог/справочник может хранить как text/value/name
+                return str(v.get("text") or v.get("value") or v.get("name") or "").strip()
             if isinstance(v, str):
                 return v.strip()
     return ""
@@ -138,8 +139,13 @@ async def run_slot(slot: str) -> None:
         for f in task_fields or []:
             if f.get("id") == 1:
                 val = f.get("value") or {}
-                # часто внутри title.value.fields[2].value — ФИО и т.п.; используем name title
-                task_title = (f.get("name") or "Задача").strip()
+                # Берём реальное текстовое значение заголовка
+                if isinstance(val, dict):
+                    task_title = str(val.get("text") or val.get("value") or val.get("name") or f.get("name") or "Задача").strip()
+                elif isinstance(val, str):
+                    task_title = val.strip() or (f.get("name") or "Задача").strip()
+                else:
+                    task_title = (f.get("name") or "Задача").strip()
                 break
 
         errors = check_rules(fields_meta, task_fields, target, slot)
@@ -170,7 +176,9 @@ async def run_slot(slot: str) -> None:
     # today21 — по одной задаче = одно сообщение; yesterday12 — предварительно агрегировали бы,
     # но в рамках очереди кладём по одной записи на задачу, а воркер отправит последовательно.
     import hashlib
-    from ..bot import ADMIN_IDS
+    # Читаем ADMIN_IDS напрямую из окружения, чтобы избежать импорта bot и сайд-эффектов
+    admin_ids_env = os.getenv("ADMIN_IDS", "")
+    ADMIN_IDS = [int(x.strip()) for x in admin_ids_env.split(",") if x.strip().isdigit()]
     import pytz
 
     tz = pytz.timezone(os.getenv("TZ", "Asia/Yekaterinburg"))
