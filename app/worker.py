@@ -6,6 +6,7 @@
 import asyncio
 import os
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import List, Dict, Any
 import pytz
 from dotenv import load_dotenv
@@ -30,6 +31,8 @@ TRUNC_COMMENT_LEN = int(os.getenv("TRUNC_COMMENT_LEN", "50"))
 # Очистка логов: параметры по умолчанию
 LOGS_RETENTION_DAYS = int(os.getenv("LOGS_RETENTION_DAYS", "2"))
 LOGS_CLEANUP_INTERVAL_HOURS = int(os.getenv("LOGS_CLEANUP_INTERVAL_HOURS", "24"))
+# Отдельный ретеншн для файлов NDJSON с вебхуками (в днях)
+LOG_FILES_RETENTION_DAYS = int(os.getenv("LOG_FILES_RETENTION_DAYS", "7"))
 
 # Режим работы (переключается автоматически при наличии BOT_TOKEN)
 DRY_RUN = not bool(os.getenv("BOT_TOKEN"))  # Если есть BOT_TOKEN, используем реальную отправку
@@ -366,6 +369,44 @@ class NotificationWorker:
         
         return header + '\n\n'.join(lines)
     
+    def _cleanup_log_files(self, now: datetime) -> int:
+        """Удалить файлы logs/pyrus_raw_*.ndjson старше LOG_FILES_RETENTION_DAYS.
+
+        Возвращает количество удалённых файлов. Игнорирует ошибки парсинга/удаления.
+        """
+        try:
+            logs_dir = Path("logs")
+            if not logs_dir.exists():
+                return 0
+
+            # Сравниваем по календарной дате в заданной TZ
+            today_in_tz = now.astimezone(self.timezone).date()
+            cutoff_date = today_in_tz - timedelta(days=LOG_FILES_RETENTION_DAYS)
+
+            removed = 0
+            for file_path in logs_dir.glob("pyrus_raw_*.ndjson"):
+                name = file_path.name
+                try:
+                    # Имя формата pyrus_raw_YYYYMMDD.ndjson
+                    date_part = name.split("_")[-1].split(".")[0]
+                    file_date = datetime.strptime(date_part, "%Y%m%d").date()
+                except Exception:
+                    # Пропускаем файлы с нестандартным именем
+                    continue
+
+                if file_date <= cutoff_date:
+                    try:
+                        if file_path.exists():
+                            file_path.unlink()
+                            removed += 1
+                    except Exception:
+                        # Не прерываемся на ошибках удаления
+                        pass
+
+            return removed
+        except Exception:
+            return 0
+    
     async def _send_telegram_message(self, telegram_id: int, message: str):
         """Отправка сообщения через Telegram"""
         if self.telegram_bot:
@@ -438,14 +479,22 @@ class NotificationWorker:
             if not should_run:
                 return
 
-            # Выполняем очистку логов старше retention
+            # Выполняем очистку логов старше retention (БД)
             db.cleanup_old_logs(days=LOGS_RETENTION_DAYS)
+
+            # Дополнительно чистим файлы NDJSON на диске
+            files_removed = self._cleanup_log_files(now)
             db.settings_set('logs_last_cleanup_ts', now_utc_naive.isoformat())
             db.log_event("logs_cleanup", {
                 "retention_days": LOGS_RETENTION_DAYS,
                 "interval_hours": LOGS_CLEANUP_INTERVAL_HOURS
             })
-            print(f"🧹 Очистка логов завершена: retention={LOGS_RETENTION_DAYS}d, next in {LOGS_CLEANUP_INTERVAL_HOURS}h")
+            if files_removed:
+                db.log_event("logs_files_cleanup", {
+                    "removed_files": files_removed,
+                    "retention_days": LOG_FILES_RETENTION_DAYS
+                })
+            print(f"🧹 Очистка логов завершена: retention(DB)={LOGS_RETENTION_DAYS}d, files={files_removed} removed, next in {LOGS_CLEANUP_INTERVAL_HOURS}h")
         except Exception as e:
             print(f"⚠️ Ошибка очистки логов: {e}")
 
