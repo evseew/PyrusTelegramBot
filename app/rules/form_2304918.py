@@ -36,9 +36,18 @@ def _name(fields_meta: Dict[int, Dict[str, Any]], field_id: int, fallback: str) 
 
 
 def _get_field_value(field_list: List[Dict[str, Any]], field_id: int) -> Optional[Any]:
-    for f in field_list:
+    """Ищет значение поля по id, рекурсивно обходя вложенные секции/группы.
+
+    Pyrus для секций/групп кладёт в value словарь с ключом "fields": [...].
+    """
+    for f in field_list or []:
         if f.get("id") == field_id:
             return f.get("value")
+        val = f.get("value")
+        if isinstance(val, dict) and isinstance(val.get("fields"), list):
+            nested = _get_field_value(val.get("fields") or [], field_id)
+            if nested is not None:
+                return nested
     return None
 
 
@@ -84,10 +93,48 @@ def _text_equals(value: Any, target: str) -> bool:
         normalized = "да" if value else "нет"
         return normalized == target.strip().lower()
     if isinstance(value, dict):
+        # Pyrus для choice/multiple_choice часто присылает choice_names
         text = value.get("text") or value.get("value") or value.get("name")
         if isinstance(text, str):
             return text.strip().lower() == target.strip().lower()
+        choice_names = value.get("choice_names")
+        if isinstance(choice_names, list):
+            t = target.strip().lower()
+            return any(isinstance(c, str) and c.strip().lower() == t for c in choice_names)
     return False
+
+
+def _text_in(value: Any, options: List[str]) -> bool:
+    """Проверка: совпадает ли текстовое значение с одним из вариантов (без учёта регистра).
+
+    Учитываем, что для multiple_choice Pyrus кладёт список choice_names.
+    """
+    for opt in options:
+        if _text_equals(value, opt):
+            return True
+    return False
+
+
+def _value_to_text(value: Any) -> str:
+    """Человекочитаемое представление значения для вставки в сообщения."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bool):
+        return "да" if value else "нет"
+    if isinstance(value, dict):
+        # Предпочтительно вывести первый choice_name, иначе text/value/name
+        choice_names = value.get("choice_names")
+        if isinstance(choice_names, list) and choice_names:
+            first = choice_names[0]
+            if isinstance(first, str):
+                return first
+        for k in ("text", "value", "name"):
+            v = value.get(k)
+            if isinstance(v, str):
+                return v
+    return str(value)
 
 
 def check_rules(fields_meta: Dict[int, Dict[str, Any]], task_fields: List[Dict[str, Any]], target_day: str, run_slot: str) -> List[str]:
@@ -149,13 +196,16 @@ def check_rules(fields_meta: Dict[int, Dict[str, Any]], task_fields: List[Dict[s
     if v_date2 == target_day and _is_empty_choice(v_att2):
         errors.append(f"«{n_date2}» — сегодня; «{n_att2}» не отмечено.")
 
-    # Правило 4b — если статус = «не знает расписание», то дата след.контакта должна быть > target_day
-    if _text_equals(v_exit, "не знает расписание"):
+    # Правило 4b — если статус проблемный, то дата след.контакта должна быть > target_day
+    # Добавляем статус «Не вышел на связь :(» помимо «не знает расписание»
+    problem_statuses = ["не знает расписание", "не вышел на связь :("]
+    if _text_in(v_exit, problem_statuses):
+        exit_label = _value_to_text(v_exit) or "проблемный статус"
         if v_next is None:
-            errors.append(f"«{n_exit}» = «не знает расписание»; заполните «{n_next}» позже, чем {target_day}.")
+            errors.append(f"«{n_exit}» = «{exit_label}»; заполните «{n_next}» позже, чем {target_day}.")
         elif v_next <= target_day:
             # строго больше target_day
-            errors.append(f"«{n_exit}» = «не знает расписание»; «{n_next}» должна быть позже, чем {target_day}.")
+            errors.append(f"«{n_exit}» = «{exit_label}»; «{n_next}» должна быть позже, чем {target_day}.")
 
     return errors
 

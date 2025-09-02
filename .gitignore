@@ -72,3 +72,6 @@ schema.sql
 
 # Duplicate env files
 env.example
+
+# Virtual env (dot)
+.venv/
