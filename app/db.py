@@ -238,7 +238,17 @@ class Database:
         for record in rows:
             user_info = users_map.get(int(record['user_id']))
             if not user_info:
-                continue
+                # Для админских отчётов (предформат, слот report_*) допускаем прямую доставку по TG chat_id
+                try:
+                    if bool(record.get('is_preformatted')) and str(record.get('slot') or '').startswith('report_'):
+                        user_info = {
+                            'telegram_id': int(record.get('user_id')),
+                            'full_name': 'Admin'
+                        }
+                    else:
+                        continue
+                except Exception:
+                    continue
             record['users'] = user_info
             enriched_records.append(record)
 

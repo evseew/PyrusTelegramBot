@@ -24,7 +24,7 @@ import pytz
 
 from ..db import db
 from ..pyrus_client import PyrusClient
-from ..rules.form_2304918 import check_rules, TEACHER_ID
+from ..rules.form_2304918 import check_rules, TEACHER_ID, _get_field_value
 import os
 
 
@@ -50,15 +50,15 @@ def _build_fields_meta(form_meta: Dict[str, Any]) -> Dict[int, Dict[str, Any]]:
 
 
 def _extract_teacher_full_name(task_fields: List[Dict[str, Any]]) -> str:
-    for f in task_fields:
-        if f.get("id") == TEACHER_ID:
-            v = f.get("value")
-            if isinstance(v, dict):
-                # попытаемся достать понятное имя
-                # каталог/справочник может хранить как text/value/name
-                return str(v.get("text") or v.get("value") or v.get("name") or "").strip()
-            if isinstance(v, str):
-                return v.strip()
+    """Надёжно достать ФИО преподавателя из поля TEACHER_ID, учитывая вложенные секции.
+
+    Используем рекурсивный поиск значения из rules._get_field_value, затем извлекаем текст.
+    """
+    v = _get_field_value(task_fields, TEACHER_ID)
+    if isinstance(v, dict):
+        return str(v.get("text") or v.get("value") or v.get("name") or "").strip()
+    if isinstance(v, str):
+        return v.strip()
     return ""
 
 
@@ -94,10 +94,19 @@ def _fuzzy_find_user_by_full_name(candidate: str, threshold: float = 0.85) -> Tu
 
 
 def _format_today_message(task_title: str, task_id: int, errors: List[str]) -> str:
-    lines = [f"Привет! В задаче «{task_title}» есть что поправить на сегодня:", ""]
-    lines.extend([f"– {e}" for e in errors])
+    """Дружелюбное сообщение для преподавателя с эмоджи и ограничением длины заголовка."""
+    import os as _os
+    limit = int(_os.getenv("TRUNC_TASK_TITLE_LEN", "50"))
+    title_short = (task_title or "Задача")[:limit]
+
+    bullet = "•"  # компактная марка списка
+    lines = [
+        f"👋 Привет! В задаче «{title_short}» сегодня есть небольшие дела:",
+        "",
+    ]
+    lines.extend([f"{bullet} {e}" for e in errors])
     lines.append("")
-    lines.append(f"Ссылка на задачу: https://pyrus.com/t#id{task_id}")
+    lines.append(f"🔗 Ссылка: https://pyrus.com/t#id{task_id}")
     return "\n".join(lines)
 
 
@@ -199,24 +208,40 @@ async def run_slot(slot: str) -> None:
             except Exception as e:
                 db.log_event("enqueue_error", {"user_id": user_id, "task_id": task_id, "error": str(e)})
 
-    # Фолбэк админу
+    # Фолбэк: один агрегированный отчёт админу вместо множества сообщений
     admin_ids = ADMIN_IDS or []
-    for teacher_name, task_id, errors in ambiguous_to_admin:
-        if not admin_ids:
-            continue
-        text = _format_today_message(f"Задача #{task_id}", int(task_id), errors)
-        text = f"Админ, нужна помощь: не нашёл/несколько совпадений для преподавателя «{teacher_name}».\n\n" + text
-        h = hashlib.sha256((slot + str(task_id) + "admin" + teacher_name + "|".join(errors)).encode("utf-8")).hexdigest()
+    if admin_ids:
+        # Подсчёты
+        sent_forms = sum(len(msgs) for msgs in per_teacher.values())
+        sent_teachers = len(per_teacher)
+        not_sent_forms = len(ambiguous_to_admin)
+        unknown_teachers = len({(name or "").strip() for name, _, _ in ambiguous_to_admin if (name or "").strip()})
+
+        # Формируем текст отчёта
+        report_lines = [
+            f"Админ-отчёт по форме «{form_name}» за {target} (слот {slot})",
+            "",
+            f"Разослано: {sent_forms} задач, преподавателей: {sent_teachers}",
+            f"Не разослано: {not_sent_forms} задач",
+            f"Преподавателей не найдено в системе: {unknown_teachers}",
+        ]
+        report_text = "\n".join(report_lines)
+
+        # Отдельный слот для отчётов, чтобы воркер применил специальную доставку
+        report_slot = f"report_{slot}"
+        import hashlib as _hashlib
+        report_hash = _hashlib.sha256((report_slot + target + str(sent_forms) + str(not_sent_forms) + str(unknown_teachers)).encode("utf-8")).hexdigest()
+
         try:
             db.enqueue_preformatted(
-                task_id=int(task_id),
-                user_id=int(admin_ids[0]),
+                task_id=0,  # служебный отчёт, не привязан к задаче
+                user_id=int(admin_ids[0]),  # TG chat_id
                 send_at=send_at.astimezone(pytz.UTC).replace(tzinfo=None),
-                slot=slot,
-                message_text=text,
-                dedupe_hash=h,
+                slot=report_slot,
+                message_text=report_text,
+                dedupe_hash=report_hash,
             )
         except Exception as e:
-            db.log_event("enqueue_admin_error", {"task_id": task_id, "error": str(e)})
+            db.log_event("enqueue_admin_report_error", {"error": str(e), "slot": report_slot})
 
 
