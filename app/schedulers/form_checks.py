@@ -62,6 +62,28 @@ def _extract_teacher_full_name(task_fields: List[Dict[str, Any]]) -> str:
     return ""
 
 
+def _extract_teacher_user_id(task_fields: List[Dict[str, Any]]) -> int | None:
+    """Попробовать достать Pyrus user_id из поля TEACHER_ID.
+
+    Поддерживаем варианты:
+    - dict с ключами id / user_id / value (int или str-число)
+    - прямое значение int/str в поле
+    """
+    v = _get_field_value(task_fields, TEACHER_ID)
+    if isinstance(v, dict):
+        for k in ("id", "user_id", "value"):
+            val = v.get(k)
+            if isinstance(val, int):
+                return val
+            if isinstance(val, str) and val.isdigit():
+                return int(val)
+    if isinstance(v, int):
+        return v
+    if isinstance(v, str) and v.isdigit():
+        return int(v)
+    return None
+
+
 def _fuzzy_find_user_by_full_name(candidate: str, threshold: float = 0.85) -> Tuple[str, int] | Tuple[None, None]:
     """
     Возвращает (full_name, user_id) или (None, None) если нет точного 1 совпадения.
@@ -161,15 +183,18 @@ async def run_slot(slot: str) -> None:
         if not errors:
             continue
 
-        # адресат: преподаватель по ФИО
-        teacher_name = _extract_teacher_full_name(task_fields)
-        full_name, user_id = _fuzzy_find_user_by_full_name(teacher_name, threshold=0.85)
-        if full_name and user_id:
-            # Кладём в агрегатор (позже разобьём на today/noon)
-            per_teacher.setdefault(user_id, []).append((task_id, _format_today_message(task_title or "Задача", task_id, errors)))
+        # адресат: приоритетно — по Pyrus user_id из поля, иначе — по ФИО (фаззи)
+        teacher_user_id = _extract_teacher_user_id(task_fields)
+        if isinstance(teacher_user_id, int):
+            per_teacher.setdefault(teacher_user_id, []).append((task_id, _format_today_message(task_title or "Задача", task_id, errors)))
         else:
-            # Не нашли или неоднозначно — админу
-            ambiguous_to_admin.append((teacher_name or "", task_id, errors))
+            teacher_name = _extract_teacher_full_name(task_fields)
+            full_name, user_id = _fuzzy_find_user_by_full_name(teacher_name, threshold=0.85)
+            if full_name and user_id:
+                per_teacher.setdefault(user_id, []).append((task_id, _format_today_message(task_title or "Задача", task_id, errors)))
+            else:
+                # Не нашли или неоднозначно — в сводку админу (без индивидуальных рассылок)
+                ambiguous_to_admin.append((teacher_name or "", task_id, errors))
 
     # Логируем, что нашли (на следующем шаге — постановка в pending)
     db.log_event("form_check_summary", {
