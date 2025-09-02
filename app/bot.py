@@ -564,16 +564,18 @@ class PyrusTelegramBot:
     
     # === ЗАПУСК ===
     
-    async def start_polling(self):
-        """Запуск бота (PTB v20+): используем run_polling без Updater.
-        Зачем: совместимость с v20 и упрощение жизненного цикла.
+    def start_polling(self):
+        """Запуск бота (PTB v20+): используем синхронный run_polling.
+        Зачем: PTB сам управляет event loop; избегаем ошибки "This event loop is already running".
         """
         logger.info("🚀 Запуск Telegram бота...")
         logger.info(f"👥 Админы: {ADMIN_IDS}")
         try:
-            await self.application.run_polling(close_loop=False)
+            # Синхронный запуск; PTB создаёт и управляет своим event loop сам
+            self.application.run_polling(close_loop=True)
         except Exception as e:
             logger.error(f"❌ Ошибка запуска бота: {e}")
+            # Пробрасываем исключение, чтобы процесс завершился с кодом ≠ 0 и systemd сделал рестарт
             raise
     
     async def shutdown(self):
@@ -594,20 +596,22 @@ bot = PyrusTelegramBot()
 
 
 # Функция для запуска из внешних модулей
-async def run_bot():
-    """Запуск бота"""
+def run_bot():
+    """Запуск бота (синхронный)"""
     try:
-        await bot.start_polling()
+        bot.start_polling()
     except KeyboardInterrupt:
         logger.info("🛑 Получен сигнал остановки")
-        bot.stop()
+        # Дадим процессу завершиться корректно
+        raise
     except Exception as e:
         logger.error(f"❌ Критическая ошибка бота: {e}")
-        bot.stop()
+        # Завершаем с ненулевым кодом (через исключение) — systemd перезапустит при on-failure/always
+        raise
 
 
 # Точка входа
 if __name__ == "__main__":
     print("🤖 Запуск Telegram бота для уведомлений Pyrus")
     print("=" * 50)
-    asyncio.run(run_bot())
+    run_bot()
