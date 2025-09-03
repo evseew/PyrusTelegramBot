@@ -126,7 +126,10 @@ def _format_today_message(task_title: str, task_id: int, errors: List[str]) -> s
         f"👋 Привет! В задаче «{title_short}» сегодня есть небольшие дела:",
         "",
     ]
-    lines.extend([f"{bullet} {e}" for e in errors])
+    for i, e in enumerate(errors):
+        lines.append(f"{bullet} {e}")
+        if i != len(errors) - 1:
+            lines.append("")
     lines.append("")
     lines.append(f"🔗 Ссылка: https://pyrus.com/t#id{task_id}")
     return "\n".join(lines)
@@ -143,7 +146,10 @@ def _format_yesterday_message(task_title: str, task_id: int, errors: List[str]) 
         f"👋 Привет! В задаче «{title_short}» вчера были небольшие дела:",
         "",
     ]
-    lines.extend([f"{bullet} {e}" for e in errors])
+    for i, e in enumerate(errors):
+        lines.append(f"{bullet} {e}")
+        if i != len(errors) - 1:
+            lines.append("")
     lines.append("")
     lines.append(f"🔗 Ссылка: https://pyrus.com/t#id{task_id}")
     return "\n".join(lines)
@@ -181,19 +187,21 @@ async def run_slot(slot: str) -> None:
     async for t in client.iter_register_tasks(form_id, include_archived=False):
         task_id = t.get("id") or t.get("task_id")
         task_fields = t.get("fields") or []
-        task_title = ""
-        # title может храниться в поле id=1 (title) внутри fields
-        for f in task_fields or []:
-            if f.get("id") == 1:
-                val = f.get("value") or {}
-                # Берём реальное текстовое значение заголовка
-                if isinstance(val, dict):
-                    task_title = str(val.get("text") or val.get("value") or val.get("name") or f.get("name") or "Задача").strip()
-                elif isinstance(val, str):
-                    task_title = val.strip() or (f.get("name") or "Задача").strip()
-                else:
-                    task_title = (f.get("name") or "Задача").strip()
-                break
+        # Сначала пытаемся взять заголовок как при обработке упоминаний: subject → text
+        task_title = (t.get("subject") or t.get("text") or "").strip()
+        # Фолбэк: поле id=1 (title) в fields, если subject/text пусты
+        if not task_title:
+            for f in task_fields or []:
+                if f.get("id") == 1:
+                    val = f.get("value") or {}
+                    # Берём реальное текстовое значение заголовка
+                    if isinstance(val, dict):
+                        task_title = str(val.get("text") or val.get("value") or val.get("name") or f.get("name") or "Задача").strip()
+                    elif isinstance(val, str):
+                        task_title = val.strip() or (f.get("name") or "Задача").strip()
+                    else:
+                        task_title = (f.get("name") or "Задача").strip()
+                    break
 
         errors = check_rules(fields_meta, task_fields, target, slot)
         if not errors:

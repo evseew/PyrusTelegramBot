@@ -223,6 +223,13 @@ class NotificationWorker:
                                 "telegram_id": telegram_id,
                                 "slot": r.get('slot')
                             })
+                            # Вариант A: после успешной отправки удаляем предформат из очереди
+                            try:
+                                task_id = int(r.get('task_id')) if r.get('task_id') is not None else 0
+                                db.delete_pending(task_id, int(user_id))
+                            except Exception:
+                                # Не прерываем поток отправки при ошибке удаления
+                                pass
                         else:
                             db.log_event("notify_failed_preformatted", {
                                 "user_id": user_id,
