@@ -69,7 +69,8 @@ def check_rules(
     v_needed_group = _get_field_value(task_fields, NEEDED_GROUP_TEXT_ID)
     v_invited_group = _get_field_value(task_fields, INVITED_GROUP_TEXT_ID)
     v_invited_date_raw = _get_field_value(task_fields, INVITED_DATE_ID)
-    v_invited_date = _as_date_str(v_invited_date_raw) or (str(v_invited_date_raw).strip() if isinstance(v_invited_date_raw, str) else None)
+    # Строго приводим к дате YYYY-MM-DD (поддержка DD.MM.YYYY внутри _as_date_str)
+    v_invited_date = _as_date_str(v_invited_date_raw)
 
     # Правило 1: если Дата БПЗ == target_day и 183 пусто — ошибка
     if v_date_bpz == target_day and _is_empty_choice(v_att_first):
@@ -82,7 +83,8 @@ def check_rules(
         if v_date_second is None:
             errors_general.append(f"«{n_att_first}» = ДА; заполните «{n_date_second}».")
 
-    # Правило 3: если 183 == Нет и Дата БПЗ == target_day, то 155, 242 — непустой текст; 243 — не пусто (дата)
+    # Правило 3: если 183 == Нет и Дата БПЗ == target_day,
+    # то 155, 242 — непустой текст; 243 — непустая дата строго позже target_day
     if v_date_bpz == target_day and _text_equals(v_att_first, "НЕТ"):
         if not (isinstance(v_needed_group, str) and v_needed_group.strip()):
             errors_general.append(f"«{n_att_first}» = НЕТ; заполните «{n_needed_group}».")
@@ -90,6 +92,8 @@ def check_rules(
             errors_general.append(f"«{n_att_first}» = НЕТ; заполните «{n_invited_group}».")
         if v_invited_date is None:
             errors_general.append(f"«{n_att_first}» = НЕТ; заполните «{n_invited_date}».")
+        elif v_invited_date <= target_day:
+            errors_general.append(f"«{n_invited_date}» должна быть позже, чем {target_day}.")
 
     # Правило 4: если Дата 2го занятия == target_day и 198 пусто — ошибка
     if v_date_second == target_day and _is_empty_choice(v_att_second):

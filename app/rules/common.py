@@ -32,15 +32,44 @@ def _get_field_value(field_list: List[Dict[str, Any]], field_id: int) -> Optiona
 
 
 def _as_date_str(value: Any) -> Optional[str]:
-    # В Pyrus для date обычно строка "YYYY-MM-DD" или объект со строкой внутри
+    """Нормализует вход в дату формата YYYY-MM-DD.
+
+    Поддерживаемые варианты входа:
+    - строки вида "YYYY-MM-DD" или "YYYY-MM-DDTHH:MM:SS..."
+    - строки вида "DD.MM.YYYY"
+    - словари с ключами date/value/text, содержащие строку из перечисленных выше
+    """
     if value is None:
         return None
+
+    from datetime import datetime
+
+    def _parse_to_iso(s: str) -> Optional[str]:
+        s = (s or "").strip()
+        if not s:
+            return None
+        # Попытка ISO: первые 10 символов YYYY-MM-DD
+        candidate = s[:10]
+        try:
+            dt = datetime.strptime(candidate, "%Y-%m-%d")
+            return dt.strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+        # Попытка DD.MM.YYYY
+        candidate = s[:10]
+        try:
+            dt = datetime.strptime(candidate, "%d.%m.%Y")
+            return dt.strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+        return None
+
     if isinstance(value, str):
-        return value[:10]
+        return _parse_to_iso(value)
     if isinstance(value, dict):
         v = value.get("date") or value.get("value") or value.get("text")
         if isinstance(v, str):
-            return v[:10]
+            return _parse_to_iso(v)
     return None
 
 

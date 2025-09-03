@@ -48,11 +48,13 @@ Thumbs.db
 
 # Instructions and development docs
 instr/
+tools/
 
 # Test files (не нужны на продакшне)
 test_*.py
 simple_test.py
 check_stage3_completeness.py
+
 
 # Development stage docs
 STAGE*_COMPLETED.md
