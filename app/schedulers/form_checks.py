@@ -132,6 +132,23 @@ def _format_today_message(task_title: str, task_id: int, errors: List[str]) -> s
     return "\n".join(lines)
 
 
+def _format_yesterday_message(task_title: str, task_id: int, errors: List[str]) -> str:
+    """Сообщение для сводки за вчера (слот yesterday12)."""
+    import os as _os
+    limit = int(_os.getenv("TRUNC_TASK_TITLE_LEN", "50"))
+    title_short = (task_title or "Задача")[:limit]
+
+    bullet = "•"
+    lines = [
+        f"👋 Привет! В задаче «{title_short}» вчера были небольшие дела:",
+        "",
+    ]
+    lines.extend([f"{bullet} {e}" for e in errors])
+    lines.append("")
+    lines.append(f"🔗 Ссылка: https://pyrus.com/t#id{task_id}")
+    return "\n".join(lines)
+
+
 def _format_noon_header(form_name: str) -> str:
     return f"Доброе утро! Небольшая сводка по вчерашним задачам формы «{form_name}»:\n"
 
@@ -160,7 +177,6 @@ async def run_slot(slot: str) -> None:
     # Сбор найденных по преподавателям (для noon)
     per_teacher: Dict[int, List[Tuple[int, str]]] = {}
     ambiguous_to_admin: List[Tuple[str, int, List[str]]] = []
-    fallback_to_admin: List[Tuple[str, int, List[str]]] = []
 
     async for t in client.iter_register_tasks(form_id, include_archived=False):
         task_id = t.get("id") or t.get("task_id")
@@ -185,13 +201,24 @@ async def run_slot(slot: str) -> None:
 
         # адресат: приоритетно — по Pyrus user_id из поля, иначе — по ФИО (фаззи)
         teacher_user_id = _extract_teacher_user_id(task_fields)
+        # Выбираем корректный форматтер текста по слоту
+        _fmt = _format_today_message if slot == "today21" else _format_yesterday_message
         if isinstance(teacher_user_id, int):
-            per_teacher.setdefault(teacher_user_id, []).append((task_id, _format_today_message(task_title or "Задача", task_id, errors)))
+            # Вариант A: не кладём в очередь, если такого пользователя нет в users → уходит в админ‑сводку
+            try:
+                user_obj = db.get_user(int(teacher_user_id))
+            except Exception:
+                user_obj = None
+            if user_obj:
+                per_teacher.setdefault(teacher_user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, errors)))
+            else:
+                teacher_name = _extract_teacher_full_name(task_fields)
+                ambiguous_to_admin.append((teacher_name or "", task_id, errors))
         else:
             teacher_name = _extract_teacher_full_name(task_fields)
             full_name, user_id = _fuzzy_find_user_by_full_name(teacher_name, threshold=0.85)
             if full_name and user_id:
-                per_teacher.setdefault(user_id, []).append((task_id, _format_today_message(task_title or "Задача", task_id, errors)))
+                per_teacher.setdefault(user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, errors)))
             else:
                 # Не нашли или неоднозначно — в сводку админу (без индивидуальных рассылок)
                 ambiguous_to_admin.append((teacher_name or "", task_id, errors))
@@ -253,7 +280,10 @@ async def run_slot(slot: str) -> None:
         report_text = "\n".join(report_lines)
 
         # Отдельный слот для отчётов, чтобы воркер применил специальную доставку
-        report_slot = f"report_{slot}"
+        # ВАЖНО: колонка slot в БД имеет ограничение varchar(16), поэтому используем короткие коды
+        # today21 -> report_t21, yesterday12 -> report_y12
+        short = {"today21": "t21", "yesterday12": "y12"}.get(slot, (slot or "")[:8])
+        report_slot = f"report_{short}"
         import hashlib as _hashlib
         report_hash = _hashlib.sha256((report_slot + target + str(sent_forms) + str(not_sent_forms) + str(unknown_teachers)).encode("utf-8")).hexdigest()
 
