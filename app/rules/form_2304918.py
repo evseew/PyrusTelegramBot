@@ -17,6 +17,8 @@ from typing import Any, Dict, List, Optional
 
 # Полезные ID полей (константы для читаемости)
 TEACHER_ID = 8
+# Преподаватель для уведомления по правилу 3
+TEACHER_RULE3_ID = 49
 DATE_1_ID = 26
 ATTENDED_1_ID = 27
 DATE_OTHER_GROUP_ID = 31
@@ -71,11 +73,12 @@ def _is_empty_choice(value: Any) -> bool:
     if isinstance(value, str):
         return len(value.strip()) == 0
     if isinstance(value, bool):
-        # Для чекбоксов False трактуем как «не отмечено»
-        return value is False
+        # Булево значение — это осознанный ответ (да/нет), не считаем пустым
+        return False
     if isinstance(value, dict):
-        if value.get("checkmark") == "unchecked":
-            return True
+        # Если есть явный чекмаркер — это ответ, даже если unchecked (это «нет»)
+        if value.get("checkmark") in ("checked", "unchecked"):
+            return False
         if value.get("values") in (None, []):
             return True
     if isinstance(value, list):
@@ -93,6 +96,12 @@ def _text_equals(value: Any, target: str) -> bool:
         normalized = "да" if value else "нет"
         return normalized == target.strip().lower()
     if isinstance(value, dict):
+        # Поддержка чекбокса в формате checkmark
+        if "checkmark" in value:
+            ck = str(value.get("checkmark") or "").strip().lower()
+            as_text = "да" if ck == "checked" else "нет" if ck == "unchecked" else ""
+            if as_text:
+                return as_text == target.strip().lower()
         # Pyrus для choice/multiple_choice часто присылает choice_names
         text = value.get("text") or value.get("value") or value.get("name")
         if isinstance(text, str):
@@ -124,6 +133,9 @@ def _value_to_text(value: Any) -> str:
     if isinstance(value, bool):
         return "да" if value else "нет"
     if isinstance(value, dict):
+        if "checkmark" in value:
+            ck = str(value.get("checkmark") or "").strip().lower()
+            return "да" if ck == "checked" else "нет" if ck == "unchecked" else ""
         # Предпочтительно вывести первый choice_name, иначе text/value/name
         choice_names = value.get("choice_names")
         if isinstance(choice_names, list) and choice_names:
@@ -137,14 +149,15 @@ def _value_to_text(value: Any) -> str:
     return str(value)
 
 
-def check_rules(fields_meta: Dict[int, Dict[str, Any]], task_fields: List[Dict[str, Any]], target_day: str, run_slot: str) -> List[str]:
+def check_rules(fields_meta: Dict[int, Dict[str, Any]], task_fields: List[Dict[str, Any]], target_day: str, run_slot: str) -> Dict[str, List[str]]:
     """
     Проверить все правила для target_day.
 
     run_slot: "today21" или "yesterday12" — влияет только на формулировку 4b
     (логика везде: NEXT_CONTACT_DATE > target_day; пусто — ошибка).
     """
-    errors: List[str] = []
+    errors_general: List[str] = []
+    errors_rule3: List[str] = []
 
     # Имена для сообщений
     n_date1 = _name(fields_meta, DATE_1_ID, "Дата 1 урока")
@@ -178,23 +191,23 @@ def check_rules(fields_meta: Dict[int, Dict[str, Any]], task_fields: List[Dict[s
 
     # Правило 0
     if v_date1 == target_day and _is_empty_choice(v_att1):
-        errors.append(f"«{n_date1}» — сегодня; «{n_att1}» не отмечено.")
+        errors_general.append(f"«{n_date1}» — сегодня; «{n_att1}» не отмечено.")
 
     # Правило 1
     if v_date_other == target_day and _is_empty_choice(v_att_other):
-        errors.append(f"«{n_date_other}» — сегодня; «{n_att_other}» не отмечено.")
+        errors_general.append(f"«{n_date_other}» — сегодня; «{n_att_other}» не отмечено.")
 
     # Правило 2
     if v_first == target_day and _is_empty_choice(v_att_first):
-        errors.append(f"«{n_first}» — сегодня; «{n_att_first}» не отмечено.")
+        errors_general.append(f"«{n_first}» — сегодня; «{n_att_first}» не отмечено.")
 
     # Правило 3 (применяем только если поле даты заполнено на target_day)
     if v_first == target_day and _text_equals(v_att_first, "ДА") and _is_empty_choice(v_group_fit):
-        errors.append(f"«{n_att_first}» = ДА; нужно выбрать вариант в «{n_group_fit}».")
+        errors_rule3.append(f"«{n_att_first}» = ДА; нужно выбрать вариант в «{n_group_fit}».")
 
     # Правило 4a
     if v_date2 == target_day and _is_empty_choice(v_att2):
-        errors.append(f"«{n_date2}» — сегодня; «{n_att2}» не отмечено.")
+        errors_general.append(f"«{n_date2}» — сегодня; «{n_att2}» не отмечено.")
 
     # Правило 4b — если статус проблемный, то дата след.контакта должна быть > target_day
     # Добавляем статус «Не вышел на связь :(» помимо «не знает расписание»
@@ -202,11 +215,11 @@ def check_rules(fields_meta: Dict[int, Dict[str, Any]], task_fields: List[Dict[s
     if _text_in(v_exit, problem_statuses):
         exit_label = _value_to_text(v_exit) or "проблемный статус"
         if v_next is None:
-            errors.append(f"«{n_exit}» = «{exit_label}»; заполните «{n_next}» позже, чем {target_day}.")
+            errors_general.append(f"«{n_exit}» = «{exit_label}»; заполните «{n_next}» позже, чем {target_day}.")
         elif v_next <= target_day:
             # строго больше target_day
-            errors.append(f"«{n_exit}» = «{exit_label}»; «{n_next}» должна быть позже, чем {target_day}.")
+            errors_general.append(f"«{n_exit}» = «{exit_label}»; «{n_next}» должна быть позже, чем {target_day}.")
 
-    return errors
+    return {"general": errors_general, "rule3": errors_rule3}
 
 

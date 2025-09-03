@@ -24,7 +24,7 @@ import pytz
 
 from ..db import db
 from ..pyrus_client import PyrusClient
-from ..rules.form_2304918 import check_rules, TEACHER_ID, _get_field_value
+from ..rules.form_2304918 import check_rules, TEACHER_ID, TEACHER_RULE3_ID, _get_field_value
 import os
 
 
@@ -49,12 +49,12 @@ def _build_fields_meta(form_meta: Dict[str, Any]) -> Dict[int, Dict[str, Any]]:
     return out
 
 
-def _extract_teacher_full_name(task_fields: List[Dict[str, Any]]) -> str:
+def _extract_teacher_full_name(task_fields: List[Dict[str, Any]], field_id: int = TEACHER_ID) -> str:
     """Надёжно достать ФИО преподавателя из поля TEACHER_ID, учитывая вложенные секции.
 
     Используем рекурсивный поиск значения из rules._get_field_value, затем извлекаем текст.
     """
-    v = _get_field_value(task_fields, TEACHER_ID)
+    v = _get_field_value(task_fields, field_id)
     if isinstance(v, dict):
         return str(v.get("text") or v.get("value") or v.get("name") or "").strip()
     if isinstance(v, str):
@@ -62,14 +62,14 @@ def _extract_teacher_full_name(task_fields: List[Dict[str, Any]]) -> str:
     return ""
 
 
-def _extract_teacher_user_id(task_fields: List[Dict[str, Any]]) -> int | None:
+def _extract_teacher_user_id(task_fields: List[Dict[str, Any]], field_id: int = TEACHER_ID) -> int | None:
     """Попробовать достать Pyrus user_id из поля TEACHER_ID.
 
     Поддерживаем варианты:
     - dict с ключами id / user_id / value (int или str-число)
     - прямое значение int/str в поле
     """
-    v = _get_field_value(task_fields, TEACHER_ID)
+    v = _get_field_value(task_fields, field_id)
     if isinstance(v, dict):
         for k in ("id", "user_id", "value"):
             val = v.get(k)
@@ -203,33 +203,55 @@ async def run_slot(slot: str) -> None:
                         task_title = (f.get("name") or "Задача").strip()
                     break
 
-        errors = check_rules(fields_meta, task_fields, target, slot)
-        if not errors:
+        errors_map = check_rules(fields_meta, task_fields, target, slot)
+        general_errors = errors_map.get("general") or []
+        rule3_errors = errors_map.get("rule3") or []
+        if not general_errors and not rule3_errors:
             continue
 
-        # адресат: приоритетно — по Pyrus user_id из поля, иначе — по ФИО (фаззи)
-        teacher_user_id = _extract_teacher_user_id(task_fields)
-        # Выбираем корректный форматтер текста по слоту
         _fmt = _format_today_message if slot == "today21" else _format_yesterday_message
-        if isinstance(teacher_user_id, int):
-            # Вариант A: не кладём в очередь, если такого пользователя нет в users → уходит в админ‑сводку
-            try:
-                user_obj = db.get_user(int(teacher_user_id))
-            except Exception:
-                user_obj = None
-            if user_obj:
-                per_teacher.setdefault(teacher_user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, errors)))
+
+        # 1) Общие ошибки → основной преподаватель (TEACHER_ID)
+        if general_errors:
+            teacher_user_id = _extract_teacher_user_id(task_fields, TEACHER_ID)
+            if isinstance(teacher_user_id, int):
+                try:
+                    user_obj = db.get_user(int(teacher_user_id))
+                except Exception:
+                    user_obj = None
+                if user_obj:
+                    per_teacher.setdefault(teacher_user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, general_errors)))
+                else:
+                    teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
+                    ambiguous_to_admin.append((teacher_name or "", task_id, general_errors))
             else:
-                teacher_name = _extract_teacher_full_name(task_fields)
-                ambiguous_to_admin.append((teacher_name or "", task_id, errors))
-        else:
-            teacher_name = _extract_teacher_full_name(task_fields)
-            full_name, user_id = _fuzzy_find_user_by_full_name(teacher_name, threshold=0.85)
-            if full_name and user_id:
-                per_teacher.setdefault(user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, errors)))
+                teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
+                full_name, user_id = _fuzzy_find_user_by_full_name(teacher_name, threshold=0.85)
+                if full_name and user_id:
+                    per_teacher.setdefault(user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, general_errors)))
+                else:
+                    ambiguous_to_admin.append((teacher_name or "", task_id, general_errors))
+
+        # 2) Ошибки правила 3 → преподаватель из поля 49 (TEACHER_RULE3_ID)
+        if rule3_errors:
+            teacher_user_id_r3 = _extract_teacher_user_id(task_fields, TEACHER_RULE3_ID)
+            if isinstance(teacher_user_id_r3, int):
+                try:
+                    user_obj_r3 = db.get_user(int(teacher_user_id_r3))
+                except Exception:
+                    user_obj_r3 = None
+                if user_obj_r3:
+                    per_teacher.setdefault(teacher_user_id_r3, []).append((task_id, _fmt(task_title or "Задача", task_id, rule3_errors)))
+                else:
+                    teacher_name_r3 = _extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
+                    ambiguous_to_admin.append((teacher_name_r3 or "", task_id, rule3_errors))
             else:
-                # Не нашли или неоднозначно — в сводку админу (без индивидуальных рассылок)
-                ambiguous_to_admin.append((teacher_name or "", task_id, errors))
+                teacher_name_r3 = _extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
+                full_name_r3, user_id_r3 = _fuzzy_find_user_by_full_name(teacher_name_r3, threshold=0.85)
+                if full_name_r3 and user_id_r3:
+                    per_teacher.setdefault(user_id_r3, []).append((task_id, _fmt(task_title or "Задача", task_id, rule3_errors)))
+                else:
+                    ambiguous_to_admin.append((teacher_name_r3 or "", task_id, rule3_errors))
 
     # Логируем, что нашли (на следующем шаге — постановка в pending)
     db.log_event("form_check_summary", {
