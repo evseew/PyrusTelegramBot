@@ -25,7 +25,6 @@ import pytz
 from ..db import db
 from ..pyrus_client import PyrusClient
 from ..rules.form_2304918 import check_rules, TEACHER_ID, TEACHER_RULE3_ID, _get_field_value
-import os
 
 
 def _tz_now(tz_name: str) -> datetime:
@@ -162,11 +161,18 @@ def _format_noon_header(form_name: str) -> str:
 async def run_slot(slot: str) -> None:
     """
     Выполнить проверку для указанного слота: "today21" или "yesterday12".
-    Пока: складываем события в логи и фиксируем потенциальные адресаты.
-    Следующим шагом подключим постановку в pending.
+    Поддерживает множественные формы из FORM_ID=2304918,792300
     """
+    # Проверяем, нужно ли использовать множественные формы
+    form_ids_str = os.getenv("FORM_ID", "2304918")
+    if "," in form_ids_str:
+        # Обрабатываем множественные формы
+        await run_slot_multi(slot)
+        return
+    
+    # Старая логика для одной формы
     tz = os.getenv("TZ", "Asia/Yekaterinburg")
-    form_id = int(os.getenv("FORM_ID", "2304918"))
+    form_id = int(form_ids_str.strip())
 
     now_local = _tz_now(tz)
     target = _target_day_str(now_local, slot)
@@ -273,7 +279,7 @@ async def run_slot(slot: str) -> None:
     import pytz
 
     tz = pytz.timezone(os.getenv("TZ", "Asia/Yekaterinburg"))
-    send_at = _tz_now(os.getenv("TZ", "Asia/Yekaterinburg"))
+    send_at = _tz_now(tz.zone)
 
     for user_id, msgs in per_teacher.items():
         for task_id, text in msgs:
@@ -321,6 +327,233 @@ async def run_slot(slot: str) -> None:
             db.enqueue_preformatted(
                 task_id=0,  # служебный отчёт, не привязан к задаче
                 user_id=int(admin_ids[0]),  # TG chat_id
+                send_at=send_at.astimezone(pytz.UTC).replace(tzinfo=None),
+                slot=report_slot,
+                message_text=report_text,
+                dedupe_hash=report_hash,
+            )
+        except Exception as e:
+            db.log_event("enqueue_admin_report_error", {"error": str(e), "slot": report_slot})
+
+
+async def run_slot_multi(slot: str) -> None:
+    """
+    Выполнить проверку для множественных форм из FORM_ID.
+    """
+    tz = os.getenv("TZ", "Asia/Yekaterinburg")
+    form_ids_str = os.getenv("FORM_ID", "2304918")
+    
+    # Парсим список форм
+    form_ids = []
+    for fid_str in form_ids_str.split(","):
+        try:
+            form_ids.append(int(fid_str.strip()))
+        except ValueError:
+            continue
+    
+    if not form_ids:
+        print(f"⚠️ Нет валидных form_id в FORM_ID={form_ids_str}")
+        db.log_event("form_ids_empty", {"slot": slot, "form_ids_str": form_ids_str})
+        return
+
+    now_local = _tz_now(tz)
+    target = _target_day_str(now_local, slot)
+    
+    # Читаем ADMIN_IDS
+    admin_ids_env = os.getenv("ADMIN_IDS", "")
+    ADMIN_IDS = [int(x.strip()) for x in admin_ids_env.split(",") if x.strip().isdigit()]
+    
+    client = PyrusClient()
+    
+    # Обрабатываем каждую форму
+    total_sent_forms = 0
+    total_sent_teachers = 0
+    total_not_sent = 0
+    total_unknown = 0
+    form_reports = []  # Отчеты по каждой форме
+    
+    for form_id in form_ids:
+        try:
+            # Выбираем правила для формы
+            if form_id == 2304918:
+                from ..rules.form_2304918 import check_rules, TEACHER_ID, TEACHER_RULE3_ID, _get_field_value
+                use_fuzzy_search = True
+            elif form_id == 792300:
+                from ..rules.form_792300 import check_rules, TEACHER_ID, _get_field_value, _extract_teacher_full_name, _extract_teacher_user_id
+                TEACHER_RULE3_ID = None  # У формы 792300 нет отдельного поля для правила 3
+                use_fuzzy_search = False  # Используем прямое соответствие
+            else:
+                db.log_event("unsupported_form", {"slot": slot, "form_id": form_id})
+                continue
+            
+            form_meta = await client.get_form_meta(form_id)
+            if not form_meta:
+                db.log_event("form_meta_error", {"slot": slot, "form_id": form_id})
+                continue
+
+            fields_meta = _build_fields_meta(form_meta)
+            form_name = form_meta.get("name") or f"Форма {form_id}"
+            
+            per_teacher: Dict[int, List[Tuple[int, str]]] = {}
+            ambiguous_to_admin: List[Tuple[str, int, List[str]]] = []
+            
+            # Проверяем задачи формы
+            async for t in client.iter_register_tasks(form_id, include_archived=False):
+                task_id = t.get("id") or t.get("task_id")
+                task_fields = t.get("fields") or []
+                task_title = (t.get("subject") or t.get("text") or f"Задача #{task_id}").strip()
+                
+                # Если заголовок пустой, берем из поля id=1
+                if not task_title:
+                    for f in task_fields or []:
+                        if f.get("id") == 1:
+                            val = f.get("value") or {}
+                            if isinstance(val, dict):
+                                task_title = str(val.get("text") or val.get("value") or val.get("name") or f.get("name") or "Задача").strip()
+                            elif isinstance(val, str):
+                                task_title = val.strip() or (f.get("name") or "Задача").strip()
+                            else:
+                                task_title = (f.get("name") or "Задача").strip()
+                            break
+                
+                errors_map = check_rules(fields_meta, task_fields, target, slot)
+                general_errors = errors_map.get("general") or []
+                rule3_errors = errors_map.get("rule3") or []
+                
+                if not general_errors and not rule3_errors:
+                    continue
+
+                _fmt = _format_today_message if slot == "today21" else _format_yesterday_message
+
+                # 1) Общие ошибки → преподаватель
+                if general_errors:
+                    teacher_user_id = _extract_teacher_user_id(task_fields, TEACHER_ID)
+                    if isinstance(teacher_user_id, int):
+                        # Прямое соответствие по user_id
+                        try:
+                            user_obj = db.get_user(int(teacher_user_id))
+                        except Exception:
+                            user_obj = None
+                        if user_obj:
+                            per_teacher.setdefault(teacher_user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, general_errors)))
+                        else:
+                            teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
+                            ambiguous_to_admin.append((teacher_name or "", task_id, general_errors))
+                    else:
+                        # Fallback: fuzzy-поиск по ФИО (только для форм которые это поддерживают)
+                        teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
+                        if use_fuzzy_search:
+                            full_name, user_id = _fuzzy_find_user_by_full_name(teacher_name, threshold=0.85)
+                            if full_name and user_id:
+                                per_teacher.setdefault(user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, general_errors)))
+                            else:
+                                ambiguous_to_admin.append((teacher_name or "", task_id, general_errors))
+                        else:
+                            # Для форм без fuzzy-поиска сразу в админы
+                            ambiguous_to_admin.append((teacher_name or "", task_id, general_errors))
+
+                # 2) Ошибки правила 3 → преподаватель из поля TEACHER_RULE3_ID (если есть)
+                if rule3_errors and TEACHER_RULE3_ID:
+                    teacher_user_id_r3 = _extract_teacher_user_id(task_fields, TEACHER_RULE3_ID)
+                    if isinstance(teacher_user_id_r3, int):
+                        try:
+                            user_obj_r3 = db.get_user(int(teacher_user_id_r3))
+                        except Exception:
+                            user_obj_r3 = None
+                        if user_obj_r3:
+                            per_teacher.setdefault(teacher_user_id_r3, []).append((task_id, _fmt(task_title or "Задача", task_id, rule3_errors)))
+                        else:
+                            teacher_name_r3 = _extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
+                            ambiguous_to_admin.append((teacher_name_r3 or "", task_id, rule3_errors))
+                    else:
+                        teacher_name_r3 = _extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
+                        if use_fuzzy_search:
+                            full_name_r3, user_id_r3 = _fuzzy_find_user_by_full_name(teacher_name_r3, threshold=0.85)
+                            if full_name_r3 and user_id_r3:
+                                per_teacher.setdefault(user_id_r3, []).append((task_id, _fmt(task_title or "Задача", task_id, rule3_errors)))
+                            else:
+                                ambiguous_to_admin.append((teacher_name_r3 or "", task_id, rule3_errors))
+                        else:
+                            ambiguous_to_admin.append((teacher_name_r3 or "", task_id, rule3_errors))
+
+            # Подсчеты для отчета по форме
+            sent_forms = sum(len(msgs) for msgs in per_teacher.values())
+            sent_teachers = len(per_teacher)
+            not_sent_forms = len(ambiguous_to_admin)
+            unknown_teachers = len({(name or "").strip() for name, _, _ in ambiguous_to_admin if (name or "").strip()})
+            
+            total_sent_forms += sent_forms
+            total_sent_teachers += sent_teachers
+            total_not_sent += not_sent_forms
+            total_unknown += unknown_teachers
+            
+            # Сохраняем отчет по форме
+            form_reports.append(f"📋 {form_name}: разослано {sent_forms}, не разослано {not_sent_forms}")
+            
+            # Постановка в очередь для преподавателей
+            import hashlib
+            send_at = _tz_now(tz)
+            
+            for user_id, msgs in per_teacher.items():
+                for task_id, text in msgs:
+                    h = hashlib.sha256((slot + str(task_id) + str(user_id) + text).encode("utf-8")).hexdigest()
+                    try:
+                        db.enqueue_preformatted(
+                            task_id=int(task_id),
+                            user_id=int(user_id),
+                            send_at=send_at.astimezone(pytz.UTC).replace(tzinfo=None),
+                            slot=slot,
+                            message_text=text,
+                            dedupe_hash=h,
+                        )
+                    except Exception as e:
+                        db.log_event("enqueue_error", {"user_id": user_id, "task_id": task_id, "error": str(e)})
+            
+            # Логируем результат по форме
+            db.log_event("form_check_summary", {
+                "slot": slot,
+                "form_id": form_id,
+                "form_name": form_name,
+                "teachers_found": sent_teachers,
+                "ambiguous": not_sent_forms,
+            })
+            print(f"[form_checks] slot={slot} form='{form_name}' teachers_found={sent_teachers} ambiguous={not_sent_forms}")
+            
+        except Exception as e:
+            db.log_event("form_check_error", {
+                "slot": slot,
+                "form_id": form_id,
+                "error": str(e)
+            })
+            print(f"❌ Ошибка проверки формы {form_id}: {e}")
+    
+    # Создаем сводный админ-отчет
+    if ADMIN_IDS:
+        report_lines = [
+            f"📊 Сводный отчёт за {target} (слот {slot})",
+            f"Обработано форм: {len(form_ids)}",
+            "",
+        ] + form_reports + [
+            "",
+            f"🏆 ИТОГО:",
+            f"Разослано: {total_sent_forms} задач, преподавателей: {total_sent_teachers}",
+            f"Не разослано: {total_not_sent} задач",
+            f"Преподавателей не найдено: {total_unknown}",
+        ]
+        report_text = "\n".join(report_lines)
+        
+        # Отправляем отчет админу
+        short = {"today21": "t21", "yesterday12": "y12"}.get(slot, slot[:8])
+        report_slot = f"report_{short}"
+        
+        import hashlib
+        report_hash = hashlib.sha256((report_slot + target + str(total_sent_forms) + str(total_not_sent)).encode("utf-8")).hexdigest()
+        
+        send_at = _tz_now(tz)
+        try:
+            db.enqueue_preformatted(
+                task_id=0,
+                user_id=int(ADMIN_IDS[0]),
                 send_at=send_at.astimezone(pytz.UTC).replace(tzinfo=None),
                 slot=report_slot,
                 message_text=report_text,
