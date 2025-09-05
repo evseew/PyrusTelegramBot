@@ -379,7 +379,8 @@ async def run_slot_multi(slot: str) -> None:
                 from ..rules.form_2304918 import check_rules, TEACHER_ID, TEACHER_RULE3_ID, _get_field_value
                 use_fuzzy_search = True
             elif form_id == 792300:
-                from ..rules.form_792300 import check_rules, TEACHER_ID, _get_field_value, _extract_teacher_full_name, _extract_teacher_user_id
+                from ..rules.form_792300 import check_rules, TEACHER_ID, _get_field_value
+                from ..rules.form_792300 import _extract_teacher_full_name, _extract_teacher_user_id
                 TEACHER_RULE3_ID = None  # У формы 792300 нет отдельного поля для правила 3
                 use_fuzzy_search = False  # Используем прямое соответствие
             else:
