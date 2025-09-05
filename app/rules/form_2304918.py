@@ -54,15 +54,29 @@ def _get_field_value(field_list: List[Dict[str, Any]], field_id: int) -> Optiona
 
 
 def _as_date_str(value: Any) -> Optional[str]:
-    # В Pyrus для date обычно строка "YYYY-MM-DD" или объект со строкой внутри
+    """Конвертирует дату в формат YYYY-MM-DD. Учитывает формат дд.мм.гггг из Pyrus."""
     if value is None:
         return None
+    
+    # Строковое значение
     if isinstance(value, str):
-        return value[:10]
+        date_str = value.strip()
+        # Проверяем формат дд.мм.гггг
+        if '.' in date_str and len(date_str) == 10:
+            try:
+                day, month, year = date_str.split('.')
+                return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+            except (ValueError, IndexError):
+                pass
+        # Уже в формате YYYY-MM-DD
+        return date_str[:10]
+    
+    # Объект с датой
     if isinstance(value, dict):
         v = value.get("date") or value.get("value") or value.get("text")
         if isinstance(v, str):
-            return v[:10]
+            return _as_date_str(v)  # Рекурсивно обрабатываем
+    
     return None
 
 
@@ -79,8 +93,21 @@ def _is_empty_choice(value: Any) -> bool:
         # Если есть явный чекмаркер — это ответ, даже если unchecked (это «нет»)
         if value.get("checkmark") in ("checked", "unchecked"):
             return False
-        if value.get("values") in (None, []):
+        
+        # ИСПРАВЛЕНО: Сначала проверяем choice_names
+        choice_names = value.get("choice_names")
+        if isinstance(choice_names, list):
+            return len(choice_names) == 0
+        
+        # Проверяем text/value/name
+        text_val = value.get("text") or value.get("value") or value.get("name")
+        if isinstance(text_val, str):
+            return len(text_val.strip()) == 0
+        
+        # Проверяем values только если это единственное содержимое
+        if value.get("values") in (None, []) and len(value) <= 1:
             return True
+            
     if isinstance(value, list):
         return len(value) == 0
     return False

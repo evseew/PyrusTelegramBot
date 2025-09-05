@@ -48,6 +48,7 @@ Thumbs.db
 
 # Instructions and development docs
 instr/
+*.md
 
 # Test files (не нужны на продакшне)
 test_*.py

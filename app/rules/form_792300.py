@@ -76,16 +76,21 @@ def _is_empty_choice(value: Any) -> bool:
     if isinstance(value, dict):
         if value.get("checkmark") in ("checked", "unchecked"):
             return False  # Чекбокс отмечен или явно не отмечен
-        if value.get("values") in (None, []):
-            return True
-        # Проверяем choice_names
+        
+        # ИСПРАВЛЕНО: Сначала проверяем choice_names
         choice_names = value.get("choice_names")
         if isinstance(choice_names, list):
             return len(choice_names) == 0
+        
         # Проверяем text/value/name
         text_val = value.get("text") or value.get("value") or value.get("name")
         if isinstance(text_val, str):
             return len(text_val.strip()) == 0
+        
+        # Проверяем values только если это единственное содержимое
+        if value.get("values") in (None, []) and len(value) <= 1:
+            return True
+            
     if isinstance(value, list):
         return len(value) == 0
     return False
