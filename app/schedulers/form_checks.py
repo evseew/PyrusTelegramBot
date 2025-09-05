@@ -380,7 +380,7 @@ async def run_slot_multi(slot: str) -> None:
                 use_fuzzy_search = True
             elif form_id == 792300:
                 from ..rules.form_792300 import check_rules, TEACHER_ID, _get_field_value
-                from ..rules.form_792300 import _extract_teacher_full_name
+                from ..rules.form_792300 import _extract_teacher_full_name as f792300_extract_teacher_full_name
                 from ..rules.form_792300 import _extract_teacher_user_id as f792300_extract_teacher_user_id
                 TEACHER_RULE3_ID = None  # У формы 792300 нет отдельного поля для правила 3
                 use_fuzzy_search = False  # Используем прямое соответствие
@@ -443,14 +443,14 @@ async def run_slot_multi(slot: str) -> None:
                             per_teacher.setdefault(teacher_user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, general_errors)))
                         else:
                             if form_id == 792300:
-                                teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
+                                teacher_name = f792300_extract_teacher_full_name(task_fields, TEACHER_ID)
                             else:
                                 teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
                             ambiguous_to_admin.append((teacher_name or "", task_id, general_errors))
                     else:
                         # Fallback: fuzzy-поиск по ФИО (только для форм которые это поддерживают)
                         if form_id == 792300:
-                            teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
+                            teacher_name = f792300_extract_teacher_full_name(task_fields, TEACHER_ID)
                         else:
                             teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
                         if use_fuzzy_search:
@@ -465,7 +465,10 @@ async def run_slot_multi(slot: str) -> None:
 
                 # 2) Ошибки правила 3 → преподаватель из поля TEACHER_RULE3_ID (если есть)
                 if rule3_errors and TEACHER_RULE3_ID:
-                    teacher_user_id_r3 = _extract_teacher_user_id(task_fields, TEACHER_RULE3_ID)
+                    if form_id == 792300:
+                        teacher_user_id_r3 = f792300_extract_teacher_user_id(task_fields, TEACHER_RULE3_ID)
+                    else:
+                        teacher_user_id_r3 = _extract_teacher_user_id(task_fields, TEACHER_RULE3_ID)
                     if isinstance(teacher_user_id_r3, int):
                         try:
                             user_obj_r3 = db.get_user(int(teacher_user_id_r3))
@@ -474,10 +477,16 @@ async def run_slot_multi(slot: str) -> None:
                         if user_obj_r3:
                             per_teacher.setdefault(teacher_user_id_r3, []).append((task_id, _fmt(task_title or "Задача", task_id, rule3_errors)))
                         else:
-                            teacher_name_r3 = _extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
+                            if form_id == 792300:
+                                teacher_name_r3 = f792300_extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
+                            else:
+                                teacher_name_r3 = _extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
                             ambiguous_to_admin.append((teacher_name_r3 or "", task_id, rule3_errors))
                     else:
-                        teacher_name_r3 = _extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
+                        if form_id == 792300:
+                            teacher_name_r3 = f792300_extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
+                        else:
+                            teacher_name_r3 = _extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
                         if use_fuzzy_search:
                             full_name_r3, user_id_r3 = _fuzzy_find_user_by_full_name(teacher_name_r3, threshold=0.85)
                             if full_name_r3 and user_id_r3:
