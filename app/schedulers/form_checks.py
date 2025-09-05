@@ -380,7 +380,8 @@ async def run_slot_multi(slot: str) -> None:
                 use_fuzzy_search = True
             elif form_id == 792300:
                 from ..rules.form_792300 import check_rules, TEACHER_ID, _get_field_value
-                from ..rules.form_792300 import _extract_teacher_full_name, _extract_teacher_user_id
+                from ..rules.form_792300 import _extract_teacher_full_name
+                from ..rules.form_792300 import _extract_teacher_user_id as f792300_extract_teacher_user_id
                 TEACHER_RULE3_ID = None  # У формы 792300 нет отдельного поля для правила 3
                 use_fuzzy_search = False  # Используем прямое соответствие
             else:
@@ -428,7 +429,10 @@ async def run_slot_multi(slot: str) -> None:
 
                 # 1) Общие ошибки → преподаватель
                 if general_errors:
-                    teacher_user_id = _extract_teacher_user_id(task_fields, TEACHER_ID)
+                    if form_id == 792300:
+                        teacher_user_id = f792300_extract_teacher_user_id(task_fields, TEACHER_ID)
+                    else:
+                        teacher_user_id = _extract_teacher_user_id(task_fields, TEACHER_ID)
                     if isinstance(teacher_user_id, int):
                         # Прямое соответствие по user_id
                         try:
@@ -438,11 +442,17 @@ async def run_slot_multi(slot: str) -> None:
                         if user_obj:
                             per_teacher.setdefault(teacher_user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, general_errors)))
                         else:
-                            teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
+                            if form_id == 792300:
+                                teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
+                            else:
+                                teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
                             ambiguous_to_admin.append((teacher_name or "", task_id, general_errors))
                     else:
                         # Fallback: fuzzy-поиск по ФИО (только для форм которые это поддерживают)
-                        teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
+                        if form_id == 792300:
+                            teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
+                        else:
+                            teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
                         if use_fuzzy_search:
                             full_name, user_id = _fuzzy_find_user_by_full_name(teacher_name, threshold=0.85)
                             if full_name and user_id:
