@@ -135,6 +135,13 @@ def _extract_teacher_full_name(task_fields: List[Dict[str, Any]], field_id: int 
     """Извлекает ФИО преподавателя из поля справочника сотрудников."""
     v = _get_field_value(task_fields, field_id)
     if isinstance(v, dict):
+        # Поддержка person-объекта: first_name/last_name
+        fn = v.get("first_name")
+        ln = v.get("last_name")
+        if isinstance(fn, str) or isinstance(ln, str):
+            full = f"{(fn or '').strip()} {(ln or '').strip()}".strip()
+            if full:
+                return full
         # Для справочника сотрудников обычно есть поле text или name
         return str(v.get("text") or v.get("name") or v.get("value") or "").strip()
     if isinstance(v, str):
