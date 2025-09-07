@@ -313,6 +313,21 @@ async def run_slot(slot: str) -> None:
             f"Не разослано: {not_sent_forms} задач",
             f"Преподавателей не найдено в системе: {unknown_teachers}",
         ]
+
+        # Добавляем перечень ФИО преподавателей, кому не ушло из-за отсутствия регистрации
+        if ambiguous_to_admin:
+            from collections import Counter
+            name_counts = Counter()
+            for name, _, _ in ambiguous_to_admin:
+                n = (name or "").strip()
+                if n:
+                    name_counts[n] += 1
+            if name_counts:
+                report_lines.append("")
+                report_lines.append("Преподаватели без регистрации (не получили):")
+                # показываем топ-20 по количеству задач
+                for n, cnt in name_counts.most_common(20):
+                    report_lines.append(f" - {n} ({cnt})")
         report_text = "\n".join(report_lines)
 
         # Отдельный слот для отчётов, чтобы воркер применил специальную доставку
@@ -370,6 +385,9 @@ async def run_slot_multi(slot: str) -> None:
     total_sent_teachers = 0
     total_not_sent = 0
     total_unknown = 0
+    # Агрегированный список ФИО преподавателей, кому не ушло (нет в боте)
+    from collections import Counter as _GlobalCounter
+    unknown_name_counts_all = _GlobalCounter()
     form_reports = []  # Отчеты по каждой форме
     
     for form_id in form_ids:
@@ -403,13 +421,14 @@ async def run_slot_multi(slot: str) -> None:
             async for t in client.iter_register_tasks(form_id, include_archived=False):
                 task_id = t.get("id") or t.get("task_id")
                 task_fields = t.get("fields") or []
-                task_title = (t.get("subject") or t.get("text") or f"Задача #{task_id}").strip()
-                
-                # Если заголовок пустой, берем из поля id=1
+                # 1) Пытаемся взять subject/text
+                task_title = (t.get("subject") or t.get("text") or "").strip()
+                # 2) Фолбэк: поле id=1 (title) в fields, если subject/text пусты
                 if not task_title:
                     for f in task_fields or []:
                         if f.get("id") == 1:
                             val = f.get("value") or {}
+                            # Берём реальное текстовое значение заголовка
                             if isinstance(val, dict):
                                 task_title = str(val.get("text") or val.get("value") or val.get("name") or f.get("name") or "Задача").strip()
                             elif isinstance(val, str):
@@ -417,6 +436,9 @@ async def run_slot_multi(slot: str) -> None:
                             else:
                                 task_title = (f.get("name") or "Задача").strip()
                             break
+                # 3) Окончательный фолбэк
+                if not task_title:
+                    task_title = f"Задача #{task_id}"
                 
                 errors_map = check_rules(fields_meta, task_fields, target, slot)
                 general_errors = errors_map.get("general") or []
@@ -506,9 +528,24 @@ async def run_slot_multi(slot: str) -> None:
             total_sent_teachers += sent_teachers
             total_not_sent += not_sent_forms
             total_unknown += unknown_teachers
+            # Копим ФИО непривязанных преподавателей глобально
+            for name, _, _ in ambiguous_to_admin:
+                n = (name or "").strip()
+                if n:
+                    unknown_name_counts_all[n] += 1
             
-            # Сохраняем отчет по форме
-            form_reports.append(f"📋 {form_name}: разослано {sent_forms}, не разослано {not_sent_forms}")
+            # Сохраняем отчет по форме (с ФИО непривязанных преподавателей)
+            from collections import Counter as _Counter
+            _name_counts = _Counter()
+            for name, _, _ in ambiguous_to_admin:
+                n = (name or "").strip()
+                if n:
+                    _name_counts[n] += 1
+            if _name_counts:
+                top = ", ".join([f"{n} ({c})" for n, c in _name_counts.most_common(10)])
+                form_reports.append(f"📋 {form_name}: разослано {sent_forms}, не разослано {not_sent_forms}\n   Нерегистр.: {top}")
+            else:
+                form_reports.append(f"📋 {form_name}: разослано {sent_forms}, не разослано {not_sent_forms}")
             
             # Постановка в очередь для преподавателей
             import hashlib
@@ -560,6 +597,14 @@ async def run_slot_multi(slot: str) -> None:
             f"Не разослано: {total_not_sent} задач",
             f"Преподавателей не найдено: {total_unknown}",
         ]
+        # Добавляем агрегированный список ФИО непривязанных преподавателей по всем формам
+        if unknown_name_counts_all:
+            report_lines += [
+                "",
+                "Преподаватели без регистрации (не получили, ИТОГО):",
+            ]
+            for name, cnt in unknown_name_counts_all.most_common(20):
+                report_lines.append(f" - {name} ({cnt})")
         report_text = "\n".join(report_lines)
         
         # Отправляем отчет админу

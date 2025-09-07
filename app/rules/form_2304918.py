@@ -217,7 +217,13 @@ def check_rules(fields_meta: Dict[int, Dict[str, Any]], task_fields: List[Dict[s
     v_next = _as_date_str(_get_field_value(task_fields, NEXT_CONTACT_DATE_ID))
 
     # Правило 0
-    if v_date1 == target_day and _is_empty_choice(v_att1):
+    # Применяем связку (26/27) только если статус НЕ «Выходит в МОЮ другую группу»
+    # (для «МОЮ другую группу» используется пара 31/32 — см. Правило 1)
+    if (
+        v_date1 == target_day
+        and _is_empty_choice(v_att1)
+        and not _text_equals(v_exit, "Выходит в МОЮ другую группу")
+    ):
         errors_general.append(f"«{n_date1}» — сегодня; «{n_att1}» не отмечено.")
 
     # Правило 1
