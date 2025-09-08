@@ -23,6 +23,8 @@ DATE_1_ID = 26
 ATTENDED_1_ID = 27
 DATE_OTHER_GROUP_ID = 31
 ATTENDED_OTHER_GROUP_ID = 32
+# Поле "Клиента забрали" - если стоит галочка, уведомления не отправляются
+CLIENT_TAKEN_ID = 37
 FIRST_LESSON_DATE_ID = 47
 ATTENDED_FIRST_ID = 50
 GROUP_FIT_ID = 53
@@ -185,6 +187,24 @@ def check_rules(fields_meta: Dict[int, Dict[str, Any]], task_fields: List[Dict[s
     """
     errors_general: List[str] = []
     errors_rule3: List[str] = []
+
+    # Проверяем поле "Клиента забрали" (ID=37) - если галочка стоит, не отправляем уведомления
+    v_client_taken = _get_field_value(task_fields, CLIENT_TAKEN_ID)
+    if v_client_taken is not None:
+        # Проверяем, стоит ли галочка (значение True, "checked", "да" и т.п.)
+        is_checked = False
+        if isinstance(v_client_taken, bool) and v_client_taken:
+            is_checked = True
+        elif isinstance(v_client_taken, dict):
+            checkmark = v_client_taken.get("checkmark")
+            if checkmark == "checked":
+                is_checked = True
+        elif isinstance(v_client_taken, str) and v_client_taken.lower() in ("да", "yes", "true"):
+            is_checked = True
+        
+        # Если клиента забрали, возвращаем пустые ошибки
+        if is_checked:
+            return {"general": [], "rule3": []}
 
     # Имена для сообщений
     n_date1 = _name(fields_meta, DATE_1_ID, "Дата 1 урока")
