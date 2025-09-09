@@ -178,6 +178,15 @@ def _value_to_text(value: Any) -> str:
     return str(value)
 
 
+def is_new_teacher_field_filled(task_fields: List[Dict[str, Any]]) -> bool:
+    """Проверяет, заполнено ли поле 49 (Новый преподаватель).
+    
+    Возвращает True, если поле заполнено (не пустое).
+    """
+    value = _get_field_value(task_fields, TEACHER_RULE3_ID)
+    return not _is_empty_choice(value)
+
+
 def check_rules(fields_meta: Dict[int, Dict[str, Any]], task_fields: List[Dict[str, Any]], target_day: str, run_slot: str) -> Dict[str, List[str]]:
     """
     Проверить все правила для target_day.

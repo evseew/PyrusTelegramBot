@@ -24,7 +24,7 @@ import pytz
 
 from ..db import db
 from ..pyrus_client import PyrusClient
-from ..rules.form_2304918 import check_rules, TEACHER_ID, TEACHER_RULE3_ID, _get_field_value
+from ..rules.form_2304918 import check_rules, TEACHER_ID, TEACHER_RULE3_ID, _get_field_value, is_new_teacher_field_filled
 
 
 def _tz_now(tz_name: str) -> datetime:
@@ -215,6 +215,9 @@ async def run_slot(slot: str) -> None:
                     else:
                         task_title = (f.get("name") or "Задача").strip()
                     break
+        # Окончательный фолбэк
+        if not task_title:
+            task_title = f"Задача #{task_id}"
 
         errors_map = check_rules(fields_meta, task_fields, target, slot)
         general_errors = errors_map.get("general") or []
@@ -224,47 +227,76 @@ async def run_slot(slot: str) -> None:
 
         _fmt = _format_today_message if slot == "today21" else _format_yesterday_message
 
-        # 1) Общие ошибки → основной преподаватель (TEACHER_ID)
-        if general_errors:
-            teacher_user_id = _extract_teacher_user_id(task_fields, TEACHER_ID)
-            if isinstance(teacher_user_id, int):
-                try:
-                    user_obj = db.get_user(int(teacher_user_id))
-                except Exception:
-                    user_obj = None
-                if user_obj:
-                    per_teacher.setdefault(teacher_user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, general_errors)))
+        # Проверяем, заполнено ли поле 49 (Новый преподаватель)
+        # Если да - все уведомления идут туда, если нет - используем старую логику
+        use_new_teacher = is_new_teacher_field_filled(task_fields)
+        
+        # Определяем получателя уведомлений
+        if use_new_teacher:
+            # Если поле 49 заполнено - все уведомления (общие и правило 3) идут на поле 49
+            all_errors = general_errors + rule3_errors
+            if all_errors:
+                teacher_user_id = _extract_teacher_user_id(task_fields, TEACHER_RULE3_ID)
+                if isinstance(teacher_user_id, int):
+                    try:
+                        user_obj = db.get_user(int(teacher_user_id))
+                    except Exception:
+                        user_obj = None
+                    if user_obj:
+                        per_teacher.setdefault(teacher_user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, all_errors)))
+                    else:
+                        teacher_name = _extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
+                        ambiguous_to_admin.append((teacher_name or "", task_id, all_errors))
+                else:
+                    teacher_name = _extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
+                    full_name, user_id = _fuzzy_find_user_by_full_name(teacher_name, threshold=0.85)
+                    if full_name and user_id:
+                        per_teacher.setdefault(user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, all_errors)))
+                    else:
+                        ambiguous_to_admin.append((teacher_name or "", task_id, all_errors))
+        else:
+            # Старая логика: общие → поле 8, правило 3 → поле 49
+            # 1) Общие ошибки → основной преподаватель (TEACHER_ID)
+            if general_errors:
+                teacher_user_id = _extract_teacher_user_id(task_fields, TEACHER_ID)
+                if isinstance(teacher_user_id, int):
+                    try:
+                        user_obj = db.get_user(int(teacher_user_id))
+                    except Exception:
+                        user_obj = None
+                    if user_obj:
+                        per_teacher.setdefault(teacher_user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, general_errors)))
+                    else:
+                        teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
+                        ambiguous_to_admin.append((teacher_name or "", task_id, general_errors))
                 else:
                     teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
-                    ambiguous_to_admin.append((teacher_name or "", task_id, general_errors))
-            else:
-                teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
-                full_name, user_id = _fuzzy_find_user_by_full_name(teacher_name, threshold=0.85)
-                if full_name and user_id:
-                    per_teacher.setdefault(user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, general_errors)))
-                else:
-                    ambiguous_to_admin.append((teacher_name or "", task_id, general_errors))
+                    full_name, user_id = _fuzzy_find_user_by_full_name(teacher_name, threshold=0.85)
+                    if full_name and user_id:
+                        per_teacher.setdefault(user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, general_errors)))
+                    else:
+                        ambiguous_to_admin.append((teacher_name or "", task_id, general_errors))
 
-        # 2) Ошибки правила 3 → преподаватель из поля 49 (TEACHER_RULE3_ID)
-        if rule3_errors:
-            teacher_user_id_r3 = _extract_teacher_user_id(task_fields, TEACHER_RULE3_ID)
-            if isinstance(teacher_user_id_r3, int):
-                try:
-                    user_obj_r3 = db.get_user(int(teacher_user_id_r3))
-                except Exception:
-                    user_obj_r3 = None
-                if user_obj_r3:
-                    per_teacher.setdefault(teacher_user_id_r3, []).append((task_id, _fmt(task_title or "Задача", task_id, rule3_errors)))
+            # 2) Ошибки правила 3 → преподаватель из поля 49 (TEACHER_RULE3_ID)
+            if rule3_errors:
+                teacher_user_id_r3 = _extract_teacher_user_id(task_fields, TEACHER_RULE3_ID)
+                if isinstance(teacher_user_id_r3, int):
+                    try:
+                        user_obj_r3 = db.get_user(int(teacher_user_id_r3))
+                    except Exception:
+                        user_obj_r3 = None
+                    if user_obj_r3:
+                        per_teacher.setdefault(teacher_user_id_r3, []).append((task_id, _fmt(task_title or "Задача", task_id, rule3_errors)))
+                    else:
+                        teacher_name_r3 = _extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
+                        ambiguous_to_admin.append((teacher_name_r3 or "", task_id, rule3_errors))
                 else:
                     teacher_name_r3 = _extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
-                    ambiguous_to_admin.append((teacher_name_r3 or "", task_id, rule3_errors))
-            else:
-                teacher_name_r3 = _extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
-                full_name_r3, user_id_r3 = _fuzzy_find_user_by_full_name(teacher_name_r3, threshold=0.85)
-                if full_name_r3 and user_id_r3:
-                    per_teacher.setdefault(user_id_r3, []).append((task_id, _fmt(task_title or "Задача", task_id, rule3_errors)))
-                else:
-                    ambiguous_to_admin.append((teacher_name_r3 or "", task_id, rule3_errors))
+                    full_name_r3, user_id_r3 = _fuzzy_find_user_by_full_name(teacher_name_r3, threshold=0.85)
+                    if full_name_r3 and user_id_r3:
+                        per_teacher.setdefault(user_id_r3, []).append((task_id, _fmt(task_title or "Задача", task_id, rule3_errors)))
+                    else:
+                        ambiguous_to_admin.append((teacher_name_r3 or "", task_id, rule3_errors))
 
     # Логируем, что нашли (на следующем шаге — постановка в pending)
     db.log_event("form_check_summary", {
@@ -401,7 +433,7 @@ async def run_slot_multi(slot: str) -> None:
         try:
             # Выбираем правила для формы
             if form_id == 2304918:
-                from ..rules.form_2304918 import check_rules, TEACHER_ID, TEACHER_RULE3_ID, _get_field_value
+                from ..rules.form_2304918 import check_rules, TEACHER_ID, TEACHER_RULE3_ID, _get_field_value, is_new_teacher_field_filled
                 use_fuzzy_search = True
             elif form_id == 792300:
                 from ..rules.form_792300 import check_rules, TEACHER_ID, _get_field_value
@@ -456,74 +488,108 @@ async def run_slot_multi(slot: str) -> None:
 
                 _fmt = _format_today_message if slot == "today21" else _format_yesterday_message
 
-                # 1) Общие ошибки → преподаватель
-                if general_errors:
-                    if form_id == 792300:
-                        teacher_user_id = f792300_extract_teacher_user_id(task_fields, TEACHER_ID)
-                    else:
-                        teacher_user_id = _extract_teacher_user_id(task_fields, TEACHER_ID)
-                    if isinstance(teacher_user_id, int):
-                        # Прямое соответствие по user_id
-                        try:
-                            user_obj = db.get_user(int(teacher_user_id))
-                        except Exception:
-                            user_obj = None
-                        if user_obj:
-                            per_teacher.setdefault(teacher_user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, general_errors)))
+                # Проверяем, заполнено ли поле 49 (Новый преподаватель) для формы 2304918
+                # Если да - все уведомления идут туда, если нет - используем старую логику
+                use_new_teacher = False
+                if form_id == 2304918:
+                    use_new_teacher = is_new_teacher_field_filled(task_fields)
+                
+                # Определяем получателя уведомлений
+                if use_new_teacher:
+                    # Если поле 49 заполнено - все уведомления (общие и правило 3) идут на поле 49
+                    all_errors = general_errors + rule3_errors
+                    if all_errors:
+                        teacher_user_id = _extract_teacher_user_id(task_fields, TEACHER_RULE3_ID)
+                        if isinstance(teacher_user_id, int):
+                            try:
+                                user_obj = db.get_user(int(teacher_user_id))
+                            except Exception:
+                                user_obj = None
+                            if user_obj:
+                                per_teacher.setdefault(teacher_user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, all_errors)))
+                            else:
+                                teacher_name = _extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
+                                ambiguous_to_admin.append((teacher_name or "", task_id, all_errors))
                         else:
+                            teacher_name = _extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
+                            if use_fuzzy_search:
+                                full_name, user_id = _fuzzy_find_user_by_full_name(teacher_name, threshold=0.85)
+                                if full_name and user_id:
+                                    per_teacher.setdefault(user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, all_errors)))
+                                else:
+                                    ambiguous_to_admin.append((teacher_name or "", task_id, all_errors))
+                            else:
+                                ambiguous_to_admin.append((teacher_name or "", task_id, all_errors))
+                else:
+                    # Старая логика: общие → поле 8, правило 3 → поле 49
+                    # 1) Общие ошибки → преподаватель
+                    if general_errors:
+                        if form_id == 792300:
+                            teacher_user_id = f792300_extract_teacher_user_id(task_fields, TEACHER_ID)
+                        else:
+                            teacher_user_id = _extract_teacher_user_id(task_fields, TEACHER_ID)
+                        if isinstance(teacher_user_id, int):
+                            # Прямое соответствие по user_id
+                            try:
+                                user_obj = db.get_user(int(teacher_user_id))
+                            except Exception:
+                                user_obj = None
+                            if user_obj:
+                                per_teacher.setdefault(teacher_user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, general_errors)))
+                            else:
+                                if form_id == 792300:
+                                    teacher_name = f792300_extract_teacher_full_name(task_fields, TEACHER_ID)
+                                else:
+                                    teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
+                                ambiguous_to_admin.append((teacher_name or "", task_id, general_errors))
+                        else:
+                            # Fallback: fuzzy-поиск по ФИО (только для форм которые это поддерживают)
                             if form_id == 792300:
                                 teacher_name = f792300_extract_teacher_full_name(task_fields, TEACHER_ID)
                             else:
                                 teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
-                            ambiguous_to_admin.append((teacher_name or "", task_id, general_errors))
-                    else:
-                        # Fallback: fuzzy-поиск по ФИО (только для форм которые это поддерживают)
-                        if form_id == 792300:
-                            teacher_name = f792300_extract_teacher_full_name(task_fields, TEACHER_ID)
-                        else:
-                            teacher_name = _extract_teacher_full_name(task_fields, TEACHER_ID)
-                        if use_fuzzy_search:
-                            full_name, user_id = _fuzzy_find_user_by_full_name(teacher_name, threshold=0.85)
-                            if full_name and user_id:
-                                per_teacher.setdefault(user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, general_errors)))
+                            if use_fuzzy_search:
+                                full_name, user_id = _fuzzy_find_user_by_full_name(teacher_name, threshold=0.85)
+                                if full_name and user_id:
+                                    per_teacher.setdefault(user_id, []).append((task_id, _fmt(task_title or "Задача", task_id, general_errors)))
+                                else:
+                                    ambiguous_to_admin.append((teacher_name or "", task_id, general_errors))
                             else:
+                                # Для форм без fuzzy-поиска сразу в админы
                                 ambiguous_to_admin.append((teacher_name or "", task_id, general_errors))
-                        else:
-                            # Для форм без fuzzy-поиска сразу в админы
-                            ambiguous_to_admin.append((teacher_name or "", task_id, general_errors))
 
-                # 2) Ошибки правила 3 → преподаватель из поля TEACHER_RULE3_ID (если есть)
-                if rule3_errors and TEACHER_RULE3_ID:
-                    if form_id == 792300:
-                        teacher_user_id_r3 = f792300_extract_teacher_user_id(task_fields, TEACHER_RULE3_ID)
-                    else:
-                        teacher_user_id_r3 = _extract_teacher_user_id(task_fields, TEACHER_RULE3_ID)
-                    if isinstance(teacher_user_id_r3, int):
-                        try:
-                            user_obj_r3 = db.get_user(int(teacher_user_id_r3))
-                        except Exception:
-                            user_obj_r3 = None
-                        if user_obj_r3:
-                            per_teacher.setdefault(teacher_user_id_r3, []).append((task_id, _fmt(task_title or "Задача", task_id, rule3_errors)))
+                    # 2) Ошибки правила 3 → преподаватель из поля TEACHER_RULE3_ID (если есть)
+                    if rule3_errors and TEACHER_RULE3_ID:
+                        if form_id == 792300:
+                            teacher_user_id_r3 = f792300_extract_teacher_user_id(task_fields, TEACHER_RULE3_ID)
+                        else:
+                            teacher_user_id_r3 = _extract_teacher_user_id(task_fields, TEACHER_RULE3_ID)
+                        if isinstance(teacher_user_id_r3, int):
+                            try:
+                                user_obj_r3 = db.get_user(int(teacher_user_id_r3))
+                            except Exception:
+                                user_obj_r3 = None
+                            if user_obj_r3:
+                                per_teacher.setdefault(teacher_user_id_r3, []).append((task_id, _fmt(task_title or "Задача", task_id, rule3_errors)))
+                            else:
+                                if form_id == 792300:
+                                    teacher_name_r3 = f792300_extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
+                                else:
+                                    teacher_name_r3 = _extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
+                                ambiguous_to_admin.append((teacher_name_r3 or "", task_id, rule3_errors))
                         else:
                             if form_id == 792300:
                                 teacher_name_r3 = f792300_extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
                             else:
                                 teacher_name_r3 = _extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
-                            ambiguous_to_admin.append((teacher_name_r3 or "", task_id, rule3_errors))
-                    else:
-                        if form_id == 792300:
-                            teacher_name_r3 = f792300_extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
-                        else:
-                            teacher_name_r3 = _extract_teacher_full_name(task_fields, TEACHER_RULE3_ID)
-                        if use_fuzzy_search:
-                            full_name_r3, user_id_r3 = _fuzzy_find_user_by_full_name(teacher_name_r3, threshold=0.85)
-                            if full_name_r3 and user_id_r3:
-                                per_teacher.setdefault(user_id_r3, []).append((task_id, _fmt(task_title or "Задача", task_id, rule3_errors)))
+                            if use_fuzzy_search:
+                                full_name_r3, user_id_r3 = _fuzzy_find_user_by_full_name(teacher_name_r3, threshold=0.85)
+                                if full_name_r3 and user_id_r3:
+                                    per_teacher.setdefault(user_id_r3, []).append((task_id, _fmt(task_title or "Задача", task_id, rule3_errors)))
+                                else:
+                                    ambiguous_to_admin.append((teacher_name_r3 or "", task_id, rule3_errors))
                             else:
                                 ambiguous_to_admin.append((teacher_name_r3 or "", task_id, rule3_errors))
-                        else:
-                            ambiguous_to_admin.append((teacher_name_r3 or "", task_id, rule3_errors))
 
             # Подсчеты для отчета по форме
             sent_forms = sum(len(msgs) for msgs in per_teacher.values())
