@@ -1,0 +1,27 @@
+[Unit]
+Description=Pyrus Telegram Bot API
+After=network.target
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/PyrusTelegramBot
+Environment=PYTHONPATH=/root/PyrusTelegramBot
+EnvironmentFile=/root/PyrusTelegramBot/.env
+ExecStart=/usr/bin/python3 -m uvicorn app.api:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=10
+TimeoutStartSec=60
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+SendSIGKILL=yes
+
+# Улучшенная обработка ошибок
+StartLimitInterval=300
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target
