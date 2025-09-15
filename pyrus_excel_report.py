@@ -24,6 +24,10 @@ import pandas as pd
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils.dataframe import dataframe_to_rows
+from dotenv import load_dotenv
+
+# Загружаем переменные окружения из .env файла
+load_dotenv()
 
 # Добавляем app в путь для импорта
 sys.path.append(str(Path(__file__).parent / "app"))
@@ -120,15 +124,15 @@ class PyrusDataAnalyzer:
         if isinstance(value, bool):
             return value
         
+        # Строковое значение (checked/unchecked)
+        if isinstance(value, str):
+            return value.lower() in ("да", "yes", "true", "checked")
+        
         # Объект с чекбоксом
         if isinstance(value, dict):
             checkmark = value.get("checkmark")
             if checkmark == "checked":
                 return True
-        
-        # Строковое значение
-        if isinstance(value, str):
-            return value.lower() in ("да", "yes", "true", "checked")
         
         return False
     
@@ -218,31 +222,51 @@ class PyrusDataAnalyzer:
         
         print(f"Завершен анализ формы 792300. Обработано {task_count} задач.")
     
-    def create_excel_report(self, filename: str = "pyrus_teacher_report.xlsx") -> None:
-        """Создает Excel отчет с результатами анализа."""
-        print(f"Создание Excel отчета: {filename}")
+    def create_excel_reports(self, filename: str = "pyrus_teacher_report.xlsx") -> None:
+        """Создает один Excel файл с 3 вкладками по категориям преподавателей."""
+        print(f"Создание Excel отчета с категориями: {filename}")
         
+        # Разделяем преподавателей по категориям
+        categories = {
+            "6-15 форм": [],
+            "16-30 форм": [],
+            "31+ форм": []
+        }
+        
+        for teacher_name, stats in self.teachers_stats.items():
+            form_count = stats.form_2304918_total
+            
+            if 6 <= form_count <= 15:
+                categories["6-15 форм"].append((teacher_name, stats))
+            elif 16 <= form_count <= 30:
+                categories["16-30 форм"].append((teacher_name, stats))
+            elif form_count >= 31:
+                categories["31+ форм"].append((teacher_name, stats))
+            # Пропускаем преподавателей с менее чем 6 формами
+        
+        # Создаем один файл с несколькими листами
         wb = Workbook()
         
         # Удаляем дефолтный лист
         wb.remove(wb.active)
         
-        # 1. Основной отчет (сводка по преподавателям)
-        self._create_summary_sheet(wb)
-        
-        # 2. Детализация по формам
-        self._create_detail_sheet(wb)
-        
-        # 3. Исходные данные
-        self._create_raw_data_sheet(wb)
+        # Создаем вкладку для каждой категории
+        for category_name, teachers_list in categories.items():
+            if not teachers_list:
+                print(f"⚠️ Категория '{category_name}': нет данных")
+                continue
+            
+            print(f"Создание вкладки '{category_name}': {len(teachers_list)} преподавателей")
+            self._create_summary_sheet_for_category(wb, teachers_list, category_name)
         
         # Сохраняем файл
         wb.save(filename)
-        print(f"Отчет сохранен: {filename}")
+        print(f"✅ Отчет сохранен: {filename}")
+        print("Файл содержит вкладки для каждой категории преподавателей!")
     
-    def _create_summary_sheet(self, wb: Workbook) -> None:
-        """Создает лист с основным отчетом (сводка по преподавателям)."""
-        ws = wb.create_sheet("Сводка по преподавателям")
+    def _create_summary_sheet_for_category(self, wb: Workbook, teachers_list: List[Tuple[str, 'TeacherStats']], category_name: str) -> None:
+        """Создает лист с отчетом для конкретной категории преподавателей."""
+        ws = wb.create_sheet(f"Преподаватели {category_name}")
         
         # Заголовки
         headers = [
@@ -263,9 +287,12 @@ class PyrusDataAnalyzer:
             cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
             cell.alignment = Alignment(horizontal="center")
         
+        # Сортируем по итоговому проценту (по убыванию)
+        sorted_teachers = sorted(teachers_list, key=lambda x: x[1].total_percentage, reverse=True)
+        
         # Данные по преподавателям
         row = 2
-        for teacher_name, stats in sorted(self.teachers_stats.items()):
+        for teacher_name, stats in sorted_teachers:
             ws.cell(row=row, column=1, value=stats.name)
             ws.cell(row=row, column=2, value=stats.form_2304918_total)
             ws.cell(row=row, column=3, value=stats.form_2304918_studying)
@@ -289,108 +316,6 @@ class PyrusDataAnalyzer:
             adjusted_width = min(max_length + 2, 50)
             ws.column_dimensions[column_letter].width = adjusted_width
     
-    def _create_detail_sheet(self, wb: Workbook) -> None:
-        """Создает лист с детализацией по формам."""
-        ws = wb.create_sheet("Детализация по формам")
-        
-        # Заголовки
-        headers = [
-            "ФИО преподавателя",
-            "Форма",
-            "Всего задач",
-            "Задач с отметкой 'учится'",
-            "Процент"
-        ]
-        
-        # Применяем заголовки
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
-            cell.font = Font(bold=True)
-            cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
-            cell.alignment = Alignment(horizontal="center")
-        
-        # Данные
-        row = 2
-        for teacher_name, stats in sorted(self.teachers_stats.items()):
-            # Строка для формы 2304918
-            ws.cell(row=row, column=1, value=stats.name)
-            ws.cell(row=row, column=2, value="2304918 (возврат)")
-            ws.cell(row=row, column=3, value=stats.form_2304918_total)
-            ws.cell(row=row, column=4, value=stats.form_2304918_studying)
-            ws.cell(row=row, column=5, value=round(stats.return_percentage, 2))
-            row += 1
-            
-            # Строка для формы 792300
-            ws.cell(row=row, column=1, value=stats.name)
-            ws.cell(row=row, column=2, value="792300 (конверсия)")
-            ws.cell(row=row, column=3, value=stats.form_792300_total)
-            ws.cell(row=row, column=4, value=stats.form_792300_studying)
-            ws.cell(row=row, column=5, value=round(stats.conversion_percentage, 2))
-            row += 1
-        
-        # Автоширина колонок
-        for column in ws.columns:
-            max_length = 0
-            column_letter = column[0].column_letter
-            for cell in column:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
-                    pass
-            adjusted_width = min(max_length + 2, 50)
-            ws.column_dimensions[column_letter].width = adjusted_width
-    
-    def _create_raw_data_sheet(self, wb: Workbook) -> None:
-        """Создает лист с исходными данными для проверки."""
-        ws = wb.create_sheet("Исходные данные")
-        
-        # Заголовки
-        headers = [
-            "ID задачи",
-            "Форма",
-            "Преподаватель",
-            "Учится (галочка)"
-        ]
-        
-        # Применяем заголовки
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
-            cell.font = Font(bold=True)
-            cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
-            cell.alignment = Alignment(horizontal="center")
-        
-        # Данные
-        row = 2
-        for teacher_name, stats in sorted(self.teachers_stats.items()):
-            # Данные формы 2304918
-            for data in stats.form_2304918_data:
-                ws.cell(row=row, column=1, value=data["task_id"])
-                ws.cell(row=row, column=2, value="2304918")
-                ws.cell(row=row, column=3, value=data["teacher"])
-                ws.cell(row=row, column=4, value="Да" if data["is_studying"] else "Нет")
-                row += 1
-            
-            # Данные формы 792300
-            for data in stats.form_792300_data:
-                ws.cell(row=row, column=1, value=data["task_id"])
-                ws.cell(row=row, column=2, value="792300")
-                ws.cell(row=row, column=3, value=data["teacher"])
-                ws.cell(row=row, column=4, value="Да" if data["is_studying"] else "Нет")
-                row += 1
-        
-        # Автоширина колонок
-        for column in ws.columns:
-            max_length = 0
-            column_letter = column[0].column_letter
-            for cell in column:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
-                    pass
-            adjusted_width = min(max_length + 2, 50)
-            ws.column_dimensions[column_letter].width = adjusted_width
     
     async def run_analysis(self) -> None:
         """Запускает полный анализ данных."""
@@ -401,10 +326,33 @@ class PyrusDataAnalyzer:
         await self.analyze_form_2304918()
         await self.analyze_form_792300()
         
-        # Выводим краткую статистику
+        # Выводим краткую статистику с разбивкой по категориям
         print("\n=== КРАТКАЯ СТАТИСТИКА ===")
         total_teachers = len(self.teachers_stats)
         print(f"Всего преподавателей: {total_teachers}")
+        
+        # Статистика по категориям
+        categories_count = {
+            "6-15 форм": 0,
+            "16-30 форм": 0,
+            "31+ форм": 0,
+            "< 6 форм (исключены)": 0
+        }
+        
+        for stats in self.teachers_stats.values():
+            form_count = stats.form_2304918_total
+            if 6 <= form_count <= 15:
+                categories_count["6-15 форм"] += 1
+            elif 16 <= form_count <= 30:
+                categories_count["16-30 форм"] += 1
+            elif form_count >= 31:
+                categories_count["31+ форм"] += 1
+            else:
+                categories_count["< 6 форм (исключены)"] += 1
+        
+        print("\nРазбивка по категориям:")
+        for category, count in categories_count.items():
+            print(f"  {category}: {count} преподавателей")
         
         if total_teachers > 0:
             print("\nТоп-5 преподавателей по итоговому проценту:")
@@ -416,12 +364,13 @@ class PyrusDataAnalyzer:
             for i, stats in enumerate(sorted_teachers[:5], 1):
                 print(f"{i}. {stats.name}: {stats.total_percentage:.2f}% "
                       f"(возврат: {stats.return_percentage:.2f}%, "
-                      f"конверсия: {stats.conversion_percentage:.2f}%)")
+                      f"конверсия: {stats.conversion_percentage:.2f}%) "
+                      f"[{stats.form_2304918_total} форм 2304918]")
         
-        # Создаем Excel отчет
+        # Создаем Excel отчет с категориями по вкладкам
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"pyrus_teacher_report_{timestamp}.xlsx"
-        self.create_excel_report(filename)
+        self.create_excel_reports(filename)
         
         print(f"\nАнализ завершен: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
