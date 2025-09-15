@@ -169,20 +169,40 @@ def _format_errors_brief(errors: List[str]) -> str:
     # Сокращаем каждую ошибку до ключевых слов
     brief_errors = []
     for err in errors:
-        if "не отмечено" in err.lower():
-            # Извлекаем название поля
-            if "«" in err and "»" in err:
-                field_part = err.split("«")[1].split("»")[0]
-                brief_errors.append(f"не отмечено: {field_part}")
+        if "Отметьте посещение" in err:
+            if "урока в другой группе" in err:
+                brief_errors.append("посещение в др.группе")
+            elif "первого занятия" in err:
+                brief_errors.append("посещение 1го занятия")
+            elif "второго занятия" in err:
+                brief_errors.append("посещение 2го занятия")
+            elif "БПЗ" in err:
+                brief_errors.append("посещение БПЗ")
+            elif "подобранной группе" in err:
+                brief_errors.append("посещение подобр.группы")
             else:
-                brief_errors.append("не отмечено")
-        elif "группа подходит" in err.lower():
+                brief_errors.append("посещение урока")
+        elif "Выберите подходящую группу" in err:
             brief_errors.append("выбрать группу")
-        elif "дата след.контакта" in err.lower():
-            brief_errors.append("дата контакта")
+        elif "Назначьте дату" in err:
+            if "второго занятия" in err:
+                brief_errors.append("дата 2го занятия")
+            elif "следующего контакта" in err:
+                brief_errors.append("дата контакта")
+            elif "приглашения" in err:
+                brief_errors.append("дата приглашения")
+            else:
+                brief_errors.append("назначить дату")
+        elif "Опишите какая группа нужна" in err:
+            brief_errors.append("описать группу")
+        elif "Укажите в какую группу пригласили" in err:
+            brief_errors.append("группа приглашения")
+        elif "Перенесите дату" in err:
+            brief_errors.append("перенести дату")
         else:
-            # Для остальных берем первые 30 символов
-            brief_errors.append(err[:30] + ("..." if len(err) > 30 else ""))
+            # Убираем префикс "✅ ДЕЙСТВИЕ ТРЕБУЕТСЯ: " и берем первые 25 символов
+            clean_err = err.replace("✅ ДЕЙСТВИЕ ТРЕБУЕТСЯ: ", "")
+            brief_errors.append(clean_err[:25] + ("..." if len(clean_err) > 25 else ""))
     
     return "; ".join(brief_errors)
 

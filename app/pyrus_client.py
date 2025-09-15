@@ -116,4 +116,24 @@ class PyrusClient:
             except Exception:
                 break
 
+    async def get_task(self, task_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Получить данные задачи по ID.
+        """
+        token = await self.get_token()
+        if not token:
+            return None
+        
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.get(
+                    _join_url(self.base_url, f"tasks/{task_id}"),
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+            if resp.status_code == 200:
+                return resp.json()
+        except Exception:
+            pass
+        return None
+
 

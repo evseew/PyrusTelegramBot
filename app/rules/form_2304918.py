@@ -25,6 +25,8 @@ DATE_OTHER_GROUP_ID = 31
 ATTENDED_OTHER_GROUP_ID = 32
 # Поле "Клиента забрали" - если стоит галочка, уведомления не отправляются
 CLIENT_TAKEN_ID = 37
+# Поле "УЧИТСЯ (заполняет СО)" - если стоит галочка, уведомления не отправляются
+STUDENT_STUDYING_ID = 64
 FIRST_LESSON_DATE_ID = 47
 ATTENDED_FIRST_ID = 50
 GROUP_FIT_ID = 53
@@ -215,6 +217,24 @@ def check_rules(fields_meta: Dict[int, Dict[str, Any]], task_fields: List[Dict[s
         if is_checked:
             return {"general": [], "rule3": []}
 
+    # Проверяем поле "УЧИТСЯ (заполняет СО)" (ID=64) - если галочка стоит, не отправляем уведомления
+    v_student_studying = _get_field_value(task_fields, STUDENT_STUDYING_ID)
+    if v_student_studying is not None:
+        # Проверяем, стоит ли галочка (значение True, "checked", "да" и т.п.)
+        is_checked = False
+        if isinstance(v_student_studying, bool) and v_student_studying:
+            is_checked = True
+        elif isinstance(v_student_studying, dict):
+            checkmark = v_student_studying.get("checkmark")
+            if checkmark == "checked":
+                is_checked = True
+        elif isinstance(v_student_studying, str) and v_student_studying.lower() in ("да", "yes", "true"):
+            is_checked = True
+        
+        # Если студент учится, возвращаем пустые ошибки
+        if is_checked:
+            return {"general": [], "rule3": []}
+
     # Имена для сообщений
     n_date1 = _name(fields_meta, DATE_1_ID, "Дата 1 урока")
     n_att1 = _name(fields_meta, ATTENDED_1_ID, "Пришел на занятие?")
@@ -255,23 +275,23 @@ def check_rules(fields_meta: Dict[int, Dict[str, Any]], task_fields: List[Dict[s
         and _is_empty_choice(v_att1)
         and not _text_in(v_exit, excluded_statuses)
     ):
-        errors_general.append(f"«{n_date1}» — сегодня; «{n_att1}» не отмечено.")
+        errors_general.append("✅ ДЕЙСТВИЕ ТРЕБУЕТСЯ: Отметьте посещение урока")
 
     # Правило 1
     if v_date_other == target_day and _is_empty_choice(v_att_other):
-        errors_general.append(f"«{n_date_other}» — сегодня; «{n_att_other}» не отмечено.")
+        errors_general.append("✅ ДЕЙСТВИЕ ТРЕБУЕТСЯ: Отметьте посещение урока в другой группе")
 
     # Правило 2
     if v_first == target_day and _is_empty_choice(v_att_first):
-        errors_general.append(f"«{n_first}» — сегодня; «{n_att_first}» не отмечено.")
+        errors_general.append("✅ ДЕЙСТВИЕ ТРЕБУЕТСЯ: Отметьте посещение первого занятия")
 
     # Правило 3 (применяем только если поле даты заполнено на target_day)
     if v_first == target_day and _text_equals(v_att_first, "ДА") and _is_empty_choice(v_group_fit):
-        errors_rule3.append(f"«{n_att_first}» = ДА; нужно выбрать вариант в «{n_group_fit}».")
+        errors_rule3.append("✅ ДЕЙСТВИЕ ТРЕБУЕТСЯ: Выберите подходящую группу")
 
     # Правило 4a
     if v_date2 == target_day and _is_empty_choice(v_att2):
-        errors_general.append(f"«{n_date2}» — сегодня; «{n_att2}» не отмечено.")
+        errors_general.append("✅ ДЕЙСТВИЕ ТРЕБУЕТСЯ: Отметьте посещение второго занятия")
 
     # Правило 4b — если статус проблемный, то дата след.контакта должна быть > target_day
     # Добавляем статус «Не вышел на связь :(» помимо «не знает расписание»
@@ -279,14 +299,14 @@ def check_rules(fields_meta: Dict[int, Dict[str, Any]], task_fields: List[Dict[s
     if _text_in(v_exit, problem_statuses):
         exit_label = _value_to_text(v_exit) or "проблемный статус"
         if v_next is None:
-            errors_general.append(f"«{n_exit}» = «{exit_label}»; заполните «{n_next}» позже, чем {target_day}.")
+            errors_general.append("✅ ДЕЙСТВИЕ ТРЕБУЕТСЯ: Назначьте дату следующего контакта")
         elif v_next <= target_day:
             # строго больше target_day
-            errors_general.append(f"«{n_exit}» = «{exit_label}»; «{n_next}» должна быть позже, чем {target_day}.")
+            errors_general.append("✅ ДЕЙСТВИЕ ТРЕБУЕТСЯ: Перенесите дату следующего контакта")
 
     # Правило 5 — для статуса "Подобрать другую группу": проверяем поля 47/50
     if _text_equals(v_exit, "Подобрать другую группу") and v_first == target_day and _is_empty_choice(v_att_first):
-        errors_general.append(f"«{n_exit}» = «Подобрать другую группу»; «{n_first}» — сегодня; «{n_att_first}» не отмечено.")
+        errors_general.append("✅ ДЕЙСТВИЕ ТРЕБУЕТСЯ: Отметьте посещение в подобранной группе")
 
     return {"general": errors_general, "rule3": errors_rule3}
 

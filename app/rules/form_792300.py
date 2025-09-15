@@ -204,28 +204,32 @@ def check_rules(fields_meta: Dict[int, Dict[str, Any]], task_fields: List[Dict[s
 
     # ПРАВИЛО 1: Если дата БПЗ = target_day, то должно быть отмечено посещение первого занятия
     if v_date_bpz == target_day and _is_empty_choice(v_att_first):
-        errors_general.append(f"«{n_date_bpz}» — сегодня; «{n_att_first}» не отмечено.")
+        errors_general.append("✅ ДЕЙСТВИЕ ТРЕБУЕТСЯ: Отметьте посещение БПЗ")
 
     # ПРАВИЛО 2: Если пришел на первое (ДА) и дата БПЗ сегодня, то нужно заполнить "группа подходит" и "дата 2го"
     if v_date_bpz == target_day and _text_equals(v_att_first, "ДА"):
         if _is_empty_choice(v_group_fit):
-            errors_general.append(f"«{n_att_first}» = ДА; нужно выбрать вариант в «{n_group_fit}».")
-        if not v_date_second:
-            errors_general.append(f"«{n_att_first}» = ДА; заполните «{n_date_second}».")
+            errors_general.append("✅ ДЕЙСТВИЕ ТРЕБУЕТСЯ: Выберите подходящую группу")
+        elif _text_equals(v_group_fit, "НЕТ"):
+            # ПРАВИЛО 2.1: Если группа НЕ подходит, нужно заполнить поля приглашения
+            if not v_needed_group or (isinstance(v_needed_group, str) and len(v_needed_group.strip()) == 0):
+                errors_general.append("✅ ДЕЙСТВИЕ ТРЕБУЕТСЯ: Опишите какая группа нужна")
+            if not v_invited_group or (isinstance(v_invited_group, str) and len(v_invited_group.strip()) == 0):
+                errors_general.append("✅ ДЕЙСТВИЕ ТРЕБУЕТСЯ: Укажите в какую группу пригласили")
+            if not v_invited_date:
+                errors_general.append("✅ ДЕЙСТВИЕ ТРЕБУЕТСЯ: Назначьте дату приглашения")
+            elif v_invited_date <= target_day:
+                errors_general.append("✅ ДЕЙСТВИЕ ТРЕБУЕТСЯ: Перенесите дату приглашения")
+        else:
+            # Группа подходит - нужна дата второго занятия
+            if not v_date_second:
+                errors_general.append("✅ ДЕЙСТВИЕ ТРЕБУЕТСЯ: Назначьте дату второго занятия")
 
-    # ПРАВИЛО 3: Если НЕ пришел на первое и дата БПЗ сегодня, то нужно заполнить поля приглашения
-    if v_date_bpz == target_day and _text_equals(v_att_first, "НЕТ"):
-        if not v_needed_group or (isinstance(v_needed_group, str) and len(v_needed_group.strip()) == 0):
-            errors_general.append(f"«{n_att_first}» = НЕТ; заполните «{n_needed_group}».")
-        if not v_invited_group or (isinstance(v_invited_group, str) and len(v_invited_group.strip()) == 0):
-            errors_general.append(f"«{n_att_first}» = НЕТ; заполните «{n_invited_group}».")
-        if not v_invited_date:
-            errors_general.append(f"«{n_att_first}» = НЕТ; заполните «{n_invited_date}».")
-        elif v_invited_date <= target_day:
-            errors_general.append(f"«{n_invited_date}» должна быть позже, чем {target_day}.")
+    # ПРАВИЛО 3: Если НЕ пришел на первое - дополнительных действий не требуется
+    # (поля приглашения заполняются только если пришел, но группа не подошла - см. Правило 2.1)
 
     # ПРАВИЛО 4: Если дата 2го занятия = target_day, то должно быть отмечено посещение
     if v_date_second == target_day and _is_empty_choice(v_att_second):
-        errors_general.append(f"«{n_date_second}» — сегодня; «{n_att_second}» не отмечено.")
+        errors_general.append("✅ ДЕЙСТВИЕ ТРЕБУЕТСЯ: Отметьте посещение второго занятия")
 
     return {"general": errors_general}
