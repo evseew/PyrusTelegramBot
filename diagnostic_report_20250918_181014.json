@@ -1,0 +1,452 @@
+{
+  "timestamp": "2025-09-18T18:10:08.954085",
+  "system_info": {
+    "platform": "macOS-14.6-arm64-arm-64bit",
+    "system": "Darwin",
+    "release": "23.6.0",
+    "version": "Darwin Kernel Version 23.6.0: Fri Jul  5 17:56:39 PDT 2024; root:xnu-10063.141.1~2/RELEASE_ARM64_T8122",
+    "machine": "arm64",
+    "processor": "arm",
+    "hostname": "Konstantins-MacBook-Air.local",
+    "username": "ka",
+    "home_dir": "/Users/ka",
+    "current_dir": "/Users/ka/Documents/CODE/PyrusTelegramBot",
+    "path_env": [
+      "/usr/local/bin",
+      "/System/Cryptexes/App/usr/bin",
+      "/usr/bin",
+      "/bin",
+      "/usr/sbin",
+      "/sbin",
+      "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin",
+      "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin",
+      "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin",
+      "/opt/homebrew/bin"
+    ]
+  },
+  "python_info": {
+    "version": "3.9.6 (default, Nov 11 2024, 03:15:38) \n[Clang 16.0.0 (clang-1600.0.26.6)]",
+    "version_info": [
+      3,
+      9,
+      6,
+      "final",
+      0
+    ],
+    "executable": "/Library/Developer/CommandLineTools/usr/bin/python3",
+    "prefix": "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9",
+    "base_prefix": "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9",
+    "in_virtualenv": false,
+    "path": [
+      "/Users/ka/Documents/CODE/PyrusTelegramBot",
+      "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python39.zip",
+      "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9",
+      "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/lib-dynload",
+      "/Users/ka/Library/Python/3.9/lib/python/site-packages",
+      "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/site-packages"
+    ],
+    "pip_version": "pip 21.2.4 from /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/site-packages/pip (python 3.9)"
+  },
+  "environment": {
+    "env_file_exists": true,
+    "env_file_vars": {
+      "DELAY_HOURS": 56,
+      "REPEAT_INTERVAL_HOURS": 42,
+      "TTL_HOURS": 72,
+      "TZ": 39,
+      "QUIET_START": 33,
+      "QUIET_END": 57,
+      "TRUNC_TASK_TITLE_LEN": 2,
+      "TRUNC_COMMENT_LEN": 2,
+      "QUEUE_TOP_N": 46,
+      "ADMIN_IDS": 52,
+      "BOT_TOKEN": 39,
+      "PYRUS_API_URL": 25,
+      "PYRUS_LOGIN": 40,
+      "PYRUS_SECURITY_KEY": 96,
+      "PYRUS_WEBHOOK_SECRET": 16,
+      "DEV_SKIP_PYRUS_SIG": 61,
+      "SUPABASE_URL": 40,
+      "SUPABASE_KEY": 208
+    },
+    "required_vars": {
+      "BOT_TOKEN": 39,
+      "ADMIN_IDS": 7,
+      "SUPABASE_URL": 40,
+      "SUPABASE_KEY": 208,
+      "PYRUS_LOGIN": 40,
+      "PYRUS_SECURITY_KEY": 96,
+      "PYRUS_WEBHOOK_SECRET": 16
+    },
+    "optional_vars": {
+      "DELAY_HOURS": "3",
+      "REPEAT_INTERVAL_HOURS": "3",
+      "TTL_HOURS": "24",
+      "TZ": "Asia/Yekaterinburg",
+      "QUIET_START": "22:00",
+      "QUIET_END": "09:00",
+      "DEV_SKIP_PYRUS_SIG": "false",
+      "PYRUS_API_URL": "https://api.pyrus.com/v4/"
+    },
+    "missing_required": [],
+    "missing_optional": [
+      "ENV"
+    ]
+  },
+  "packages": {
+    "required": {
+      "fastapi": "0.104.1",
+      "uvicorn[standard]": "0.24.0",
+      "aiofiles": "23.2.1",
+      "python-multipart": "0.0.6",
+      "supabase": "2.3.4",
+      "pydantic": "2.5.3",
+      "pytz": "2023.4",
+      "python-dotenv": "1.0.0",
+      "python-telegram-bot": "20.7",
+      "httpx": "0.25.2",
+      "openpyxl": "3.1.2",
+      "pandas": "2.1.4",
+      "pytest": "7.4.3",
+      "pytest-asyncio": "0.21.1",
+      "requests": "2.31.0"
+    },
+    "installed": {
+      "aiofiles": "23.2.1",
+      "altgraph": "0.17.2",
+      "annotated-types": "0.7.0",
+      "anyio": "3.7.1",
+      "backports.tarfile": "1.2.0",
+      "certifi": "2025.8.3",
+      "charset-normalizer": "3.4.3",
+      "click": "8.1.8",
+      "click-log": "0.4.0",
+      "colorama": "0.4.6",
+      "deprecation": "2.1.0",
+      "docutils": "0.22",
+      "dotty-dict": "1.3.1",
+      "et_xmlfile": "2.0.0",
+      "exceptiongroup": "1.3.0",
+      "fastapi": "0.104.1",
+      "future": "0.18.2",
+      "gitdb": "4.0.12",
+      "GitPython": "3.1.45",
+      "gotrue": "1.3.1",
+      "h11": "0.16.0",
+      "h2": "4.2.0",
+      "hpack": "4.1.0",
+      "httpcore": "1.0.9",
+      "httptools": "0.6.4",
+      "httpx": "0.25.2",
+      "hyperframe": "6.1.0",
+      "idna": "3.10",
+      "importlib_metadata": "8.7.0",
+      "iniconfig": "2.1.0",
+      "invoke": "1.7.3",
+      "jaraco.classes": "3.4.0",
+      "jaraco.context": "6.0.1",
+      "jaraco.functools": "4.3.0",
+      "keyring": "25.6.0",
+      "macholib": "1.15.2",
+      "more-itertools": "10.7.0",
+      "nh3": "0.3.0",
+      "numpy": "1.26.4",
+      "openpyxl": "3.1.2",
+      "packaging": "25.0",
+      "pandas": "2.1.4",
+      "pip": "21.2.4",
+      "pkginfo": "1.12.1.2",
+      "pluggy": "1.6.0",
+      "postgrest": "0.15.1",
+      "pydantic": "2.5.3",
+      "pydantic_core": "2.14.6",
+      "Pygments": "2.19.2",
+      "PyJWT": "2.10.1",
+      "pytest": "7.4.3",
+      "pytest-asyncio": "0.21.1",
+      "python-dateutil": "2.9.0.post0",
+      "python-dotenv": "1.0.0",
+      "python-gitlab": "3.15.0",
+      "python-multipart": "0.0.6",
+      "python-semantic-release": "7.33.2",
+      "python-telegram-bot": "20.7",
+      "pytz": "2023.4",
+      "PyYAML": "6.0.2",
+      "readme_renderer": "44.0",
+      "realtime": "1.0.6",
+      "requests": "2.31.0",
+      "requests-toolbelt": "1.0.0",
+      "rfc3986": "1.5.0",
+      "semver": "2.13.0",
+      "setuptools": "58.0.4",
+      "six": "1.15.0",
+      "smmap": "5.0.2",
+      "sniffio": "1.3.1",
+      "starlette": "0.27.0",
+      "storage3": "0.7.7",
+      "StrEnum": "0.4.15",
+      "supabase": "2.3.4",
+      "supabase_auth": "2.12.3",
+      "supabase_functions": "0.10.1",
+      "supafunc": "0.3.3",
+      "tomli": "2.2.1",
+      "tomlkit": "0.13.3",
+      "tqdm": "4.67.1",
+      "twine": "3.8.0",
+      "typing_extensions": "4.14.1",
+      "typing-inspection": "0.4.1",
+      "tzdata": "2025.2",
+      "urllib3": "2.5.0",
+      "uvicorn": "0.24.0",
+      "uvloop": "0.21.0",
+      "watchfiles": "1.1.0",
+      "websockets": "11.0.3",
+      "wheel": "0.37.0",
+      "zipp": "3.23.0"
+    },
+    "missing": [
+      "uvicorn[standard]"
+    ],
+    "version_mismatch": [],
+    "extra": []
+  },
+  "files": {
+    "required": {
+      "app/__init__.py": {
+        "exists": true,
+        "size": 31,
+        "readable": true,
+        "writable": true,
+        "executable": false
+      },
+      "app/api.py": {
+        "exists": true,
+        "size": 19995,
+        "readable": true,
+        "writable": true,
+        "executable": false
+      },
+      "app/bot.py": {
+        "exists": true,
+        "size": 29236,
+        "readable": true,
+        "writable": true,
+        "executable": false
+      },
+      "app/worker.py": {
+        "exists": true,
+        "size": 26259,
+        "readable": true,
+        "writable": true,
+        "executable": false
+      },
+      "app/db.py": {
+        "exists": true,
+        "size": 20182,
+        "readable": true,
+        "writable": true,
+        "executable": false
+      },
+      "app/utils.py": {
+        "exists": true,
+        "size": 13424,
+        "readable": true,
+        "writable": true,
+        "executable": false
+      },
+      "app/models.py": {
+        "exists": true,
+        "size": 2905,
+        "readable": true,
+        "writable": true,
+        "executable": false
+      },
+      "app/pyrus_client.py": {
+        "exists": true,
+        "size": 4937,
+        "readable": true,
+        "writable": true,
+        "executable": false
+      },
+      "requirements.txt": {
+        "exists": true,
+        "size": 394,
+        "readable": true,
+        "writable": true,
+        "executable": null
+      },
+      "run_stage5.py": {
+        "exists": true,
+        "size": 5470,
+        "readable": true,
+        "writable": true,
+        "executable": false
+      }
+    },
+    "optional": {
+      ".env": {
+        "exists": true,
+        "type": "file",
+        "size": 1885
+      },
+      "schema.sql": {
+        "exists": true,
+        "type": "file",
+        "size": 3168
+      },
+      "logs/": {
+        "exists": true,
+        "type": "directory",
+        "files_count": 1
+      },
+      "venv/": {
+        "exists": true,
+        "type": "directory",
+        "files_count": 4
+      },
+      "__pycache__/": {
+        "exists": true,
+        "type": "directory",
+        "files_count": 9
+      }
+    },
+    "missing_required": [],
+    "missing_optional": [],
+    "permission_issues": []
+  },
+  "api_connectivity": {
+    "Telegram Bot API": {
+      "success": false,
+      "status_code": 404,
+      "response_time": 1.002785,
+      "url": "https://api.telegram.org/bot***TOKEN***/getMe"
+    },
+    "Pyrus API": {
+      "success": true,
+      "status_code": 200,
+      "response_time": 0.295011,
+      "url": "https://api.pyrus.com/v4/auth"
+    },
+    "Supabase API": {
+      "success": true,
+      "status_code": 200,
+      "response_time": 0.451813,
+      "url": "https://mmpvkhwdkfsfmrppknfo.supabase.co/rest/v1/"
+    }
+  },
+  "imports": {
+    "external_packages": {
+      "dotenv": {
+        "success": true,
+        "version": "неизвестно"
+      },
+      "fastapi": {
+        "success": true,
+        "version": "0.104.1"
+      },
+      "uvicorn": {
+        "success": true,
+        "version": "0.24.0"
+      },
+      "telegram": {
+        "success": true,
+        "version": "20.7"
+      },
+      "supabase": {
+        "success": true,
+        "version": "2.3.4"
+      },
+      "httpx": {
+        "success": true,
+        "version": "0.25.2"
+      },
+      "pandas": {
+        "success": true,
+        "version": "2.1.4"
+      },
+      "openpyxl": {
+        "success": true,
+        "version": "3.1.2"
+      },
+      "pytz": {
+        "success": true,
+        "version": "2023.4"
+      },
+      "pydantic": {
+        "success": true,
+        "version": "2.5.3"
+      },
+      "aiofiles": {
+        "success": true,
+        "version": "неизвестно"
+      },
+      "pytest": {
+        "success": true,
+        "version": "7.4.3"
+      }
+    },
+    "project_modules": {
+      "app.api": {
+        "success": true
+      },
+      "app.bot": {
+        "success": true
+      },
+      "app.worker": {
+        "success": true
+      },
+      "app.db": {
+        "success": true
+      },
+      "app.utils": {
+        "success": true
+      },
+      "app.models": {
+        "success": true
+      },
+      "app.pyrus_client": {
+        "success": true
+      }
+    },
+    "failed_external": [],
+    "failed_project": []
+  },
+  "permissions": {},
+  "logs": {
+    "logs_directory": {
+      "exists": true,
+      "files_count": 0,
+      "recent_logs": []
+    },
+    "system_logs": {},
+    "disk_space": "Filesystem      Size    Used   Avail Capacity iused ifree %iused  Mounted on\n/dev/disk3s5   228Gi   175Gi    22Gi    89%    1.8M  232M    1%   /System/Volumes/Data",
+    "memory": "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                                3878.\nPages active:                            113344.\nPages inactive:                          102669.\nPages speculative:                         9981.\nPages throttled:                              0.\nPages wired down:                        545439.\nPages purgeable:                              2.\n\"Translation faults\":                9263976554.\nPages copy-on-write:                  115239401.\nPages zero filled:                   3289977292.\nPages reactivated:                   1319699214.\nPages purged:                         149828387.\nFile-backed pages:                        84733.\nAnonymous pages:                         141261.\nPages stored in compressor:             1079916.\nPages occupied by compressor:            233912.\nDecompressions:                      1591365217.\nCompressions:                        1682004903.\nPageins:                              147595639.\nPageouts:                              12980361.\nSwapins:                                2238398.\nSwapouts:                               3870525.",
+    "load_average": "18:10  up 154 days, 41 mins, 1 user, load averages: 6.58 5.53 6.15"
+  },
+  "database": {
+    "connection": true,
+    "url": "https://mmpvkhwdkfsfmrppknfo.supabase.co",
+    "tables_accessible": true
+  },
+  "network": {
+    "internet": {
+      "available": true,
+      "details": "PING 8.8.8.8 (8.8.8.8): 56 data bytes\n64 bytes from 8.8.8.8: icmp_seq=0 ttl=109 time=44.327 ms\n64 bytes from 8.8.8.8: icmp_seq=1 ttl=109 time=48.000 ms\n64 bytes from 8.8.8.8: icmp_seq=2 ttl=109 time=44.443 ms\n\n--- 8.8.8.8 ping statistics ---\n3 packets transmitted, 3 packets received, 0.0% packet loss\nround-trip min/avg/max/stddev = 44.327/45.590/48.000/1.705 ms"
+    },
+    "dns": {
+      "working": true,
+      "details": "Server:\t\t10.24.1.250\nAddress:\t10.24.1.250#53\n\nNon-authoritative answer:\nName:\tapi.telegram.org\nAddress: 149.154.167.220"
+    },
+    "open_ports": "Active LOCAL (UNIX) domain sockets\nAddress          Type   Recv-Q Send-Q            Inode             Conn             Refs          Nextref Addr\n e699f7e4b73791b stream      0      0                0 2d7de1284a73ab8f                0                0 /var/run/mDNSResponder\n2d7de1284a73ab8f stream      0      0                0  e699f7e4b73791b                0                0\nfabc145f4c85eabc stream      0      0                0 85633ac5f6f96d6e                0                0\n85633ac5f6f96d6e stream      0      0                0 fabc145f4c85eabc                0                0\n ec2fa9da583d7d8 stream      0      0                0 c6a224a536fb2850                0                0 /var/run/mDNSResponder\nc6a224a536fb2850 stream      0      0                0  ec2fa9da583d7d8                0                0\n6beb8354deb0825b stream      0      0                0 c32f05507622f674                0                0\nc32f05507622f674 stream      8      0                0 6beb8354deb0825b                0                0\ndd2ae35818dc1ddb stream      0      0                0 db638d45d2be39d3                0                0 /var/run/mDNSResponder\ndb638d45d2be39d3 stream      0      0                0 dd2ae35818dc1ddb                0                0\n4c697696b5ec871e stream      0      0                0 60ea98e17272a04d                0                0 /var/run/mDNSResponder\n60ea98e17272a04d stream      0      0                0 4c697696b5ec871e                0                0\na51a51a0de0794a9 stream      0      0                0 a8a4ef7e8793475d                0                0 /var/run/mDNSResponder\na8a4ef7e8793475d stream      0      0                0 a51a51a0de0794a9                0                0\na22c7af80046d959 stream      0      0                0 eafb31f84f3a1848                0                0 /var/run/mDNSResponder\neafb31f84f3a1848 stream      0      0                0 a22c7af80046d959                0                0\n4e597a80d4a69628 stream      0      0                0 4413a3e50276a4ca                0                0 /var/run/mDNSResponder\n4413a3e50276a4ca stream      0      0                0 4e597a80d4a69628                0                0\neccf55e2d741bc5f stream      0      0                0  a08cafc9191926e                0                0 /var/run/mDNSResponder\n a08cafc9191926e stream      0      0                0 eccf55e2d741bc5f                0                0\n1fd279551a24978f stream      0      0                0 2636cecef3712926                0                0\n2636cecef3712926 stream      0      0                0 1fd279551a24978f                0                0\n 7ae24e76a63687f stream      0      0                0 9c745c31f6f0e4c0                0                0\n9c745c31f6f0e4c0 stream      0      0                0  7ae24e76a63687f                0                0\nf9a8770ecb1afefe stream      0      0                0 f56b042af6d4fa1f                0                0\nf56b042af6d4fa1f stream      0      0                0 f9a8770ecb1afefe                0                0\nc6ab248827fa6ca7 stream      0      0                0 5bdf86dc931e5649                0                0\n5bdf86dc931e5649 stream      0      0                0 c6ab248827fa6ca7                0                0\nac7aadada64b297a stream      0      0                0 9d44f086d65f4351                0                0 /var/run/mDNSResponder\n9d44f086d65f4351 stream      0      0                0 ac7aadada64b297a                0                0\n5cf9751f2c64b476 stream      0      0                0 42cdd3d462a4f7ad                0                0\n42cdd3d462a4f7ad stream      0      0                0 5cf9751f2c64b476                0                0\n2ac279f9d2dea1e1 stream      0      0                0 d8e55b45a73b3a0a                0                0\nd8e55b45a73b3a0a stream      0      0                0 2ac279f9d2dea1e1                0                0\n613ed1355bd949b4 stream      0      0                0 81708288031c368a                0                0\n81708288031c368a stream      0      0                0 613ed1355bd949b4                0                0\n863d1b5f2b5a7da4 stream      0      0                0 cd00e667758eaa96                0                0\ncd00e667758eaa96 stream      0      0                0 863d1b5f2b5a7da4                0                0\nb0ad50147cfd3a01 stream      0      0                0 ffd83e978976b8fc                0                0 /var/run/mDNSResponder\nffd83e978976b8fc stream      0      0                0 b0ad50147cfd3a01                0                0\na4c3dd4002d2aa65 stream      0      0                0 35369b210398e831                0                0\n35369b210398e831 stream      0      0                0 a4c3dd4002d2aa65                0                0\ncdd26c431dd4010a stream      0      0 6fda1d24cf6f042e                0                0                0 /var/folders/w3/ft7m74vd01907zbm72qgpt400000gn/T/vscode-git-796ee55a3c.sock\nabf9be5bfc077ace stream      0      0                0 8984bd8569974229                0                0 /var/run/mDNSResponder\n8984bd8569974229 stream      0      0                0 abf9be5bfc077ace                0                0\nb9e24a3f2b61dec1 stream      0      0                0 120dd0f2c5da53f4                0                0 /var/run/mDNSResponder\n120dd0f2c5da53f4 stream      0      0                0 b9e24a3f2b61dec1                0                0\ne033ac9420e53acd stream      0      0                0 328f3ed1a5862fca                0                0 /var/run/mDNSResponder\n328f3ed1a5862fca stream      0      0                0 e033ac9420e53acd                0                0\n805b2bbf150ec971 stream      0      0 82be90b60e64dc49                0                0                0 /Users/ka/Library/Application Support/Cursor/1.5.-main.sock\n750b5ee1e976c056 stream      0      0                0 f34492474f04d4b5                0                0 /var/run/mDNSResponder\nf34492474f04d4b5 stream      0      0                0 750b5ee1e976c056                0                0\n f4c6a6f4e9e69b8 stream      0      0                0 55c577ad444dc4fd                0                0 /var/run/mDNSResponder\n55c577ad444dc4fd stream      0      0                0  f4c6a6f4e9e69b8                0                0\ne6b7f1a0fcf6c984 stream      0      0                0 a01c8d440a96cb3e                0                0 /var/run/mDNSResponder\na01c8d440a96cb3e stream      0      0                0 e6b7f1a0fcf6c984                0                0\n856629f0b9f454dc stream      0      0                0 79b6fdbaad4e954e                0                0 /var/run/mDNSResponder\n79b6fdbaad4e954e stream      0      0                0 856629f0b9f454dc                0                0\nfe1acabca2240e24 stream      0      0 44cf115888c1539c                0                0                0 /var/folders/w3/ft7m74vd01907zbm72qgpt400000gn/T/.com.spotify.client.8YvX8W/SingletonSocket\n7f38f779ce2f0c20 stream      0      0                0 2dd342fb595f3241                0                0 /var/run/mDNSResponder\n2dd342fb595f3241 stream      0      0                0 7f38f779ce2f0c20                0                0\n94cc030cb3927bf8 stream      0      0                0 bb47d515838ac1e5                0                0 /var/run/mDNSResponder\nbb47d515838ac1e5 stream      0      0                0 94cc030cb3927bf8                0                0\n2c9830fce50ecec0 stream      0      0 c967445f6922cb9a                0                0                0 /var/folders/w3/ft7m74vd01907zbm72qgpt400000gn/T/.company.thebrowser.Browser.vwAnS1/SingletonSocket\necce8f2a01893239 stream      0      0                0 cd491afcd070d784                0                0 /var/run/mDNSResponder\ncd491afcd070d784 stream      0      0                0 ecce8f2a01893239                0                0\n192abc73c7fd02a7 stream      0      0                0 152ad58f481e5a57                0                0 /var/run/mDNSResponder\n152ad58f481e5a57 stream      0      0                0 192abc73c7fd02a7                0                0\n9dfbb6a480de2371 stream      0      0                0 c4b96a318038c8e5                0                0 /var/run/mDNSResponder\nc4b96a318038c8e5 stream      0      0                0 9dfbb6a480de2371                0                0\naf52eb2ea679c5c8 stream      0      0                0 7df3ad321510ebca                0                0 /var/run/mDNSResponder\n7df3ad321510ebca stream      0      0                0 af52eb2ea679c5c8                0                0\n924e63293a6019e6 stream      0      0                0 47afcebcedb94a37                0                0 /var/run/mDNSResponder\n47afcebcedb94a37 stream      0      0                0 924e63293a6019e6                0                0\nc0295181d001b893 stream      0      0                0 cbca26edb752ab9d                0                0 /var/run/mDNSResponder\ncbca26edb752ab9d stream      0      0                0 c0295181d001b893                0                0\n3c4cedc726ce226c stream      0      0                0 c5bcad787b75b058                0                0 /var/run/mDNSResponder\nc5bcad787b75b058 stream      0      0                0 3c4cedc726ce226c                0                0\ne358a1e2a53b949b stream      0      0                0 defe0f18d9d71f9a                0                0 /var/run/mDNSResponder\ndefe0f18d9d71f9a stream      0      0                0 e358a1e2a53b949b                0                0\n1ff270bc5cdb3755 stream      0      0                0 c201db11c918fb52                0                0 /var/run/mDNSResponder\nc201db11c918fb52 stream      0      0                0 1ff270bc5cdb3755                0                0\nc5dd04640d313634 stream      0      0                0  5d2b49ccccc803d                0                0 /var/run/mDNSResponder\n 5d2b49ccccc803d stream      0      0                0 c5dd04640d313634                0                0\n65b319e453f895fe stream      0      0                0 f7268d71fb7b3c43                0                0 /var/run/mDNSResponder\nf7268d71fb7b3c43 stream      0      0                0 65b319e453f895fe                0                0\n8b6cc86e68997098 stream      0      0                0 836a6d73faabd42e                0                0 /var/run/mDNSResponder\n836a6d73faabd42e stream      0      0                0 8b6cc86e68997098                0                0\n899c845ba2923cae stream      0      0                0 339ec7ba714d3c58                0                0 /var/run/mDNSResponder\n85b2987878643054 stream      0      0                0 a2594f47d9fd0048                0                0 /var/run/mDNSResponder\n339ec7ba714d3c58 stream      0      0                0 899c845ba2923cae                0                0\na2594f47d9fd0048 stream      0      0                0 85b2987878643054                0                0\n25bc86776da32057 stream      0      0                0 53e00dc5765747fd                0                0 /var/run/mDNSResponder\nae03bc5908f72a72 stream      0      0                0 dfd36e2c90f96014                0                0 /var/run/mDNSResponder\n53e00dc5765747fd stream      0      0                0 25bc86776da32057                0                0\ndfd36e2c90f96014 stream      0      0                0 ae03bc5908f72a72                0                0\n 2f368cb0a7d72c1 stream      0      0                0 c2b8c002edfbbdd0                0                0 /var/run/mDNSResponder\nddbc319013c52afb stream      0      0                0 9ee24bfdfa75c36b                0                0 /var/run/mDNSResponder\n9ee24bfdfa75c36b stream      0      0                0 ddbc319013c52afb                0                0\nc2b8c002edfbbdd0 stream      0      0                0  2f368cb0a7d72c1                0                0\nc8f92b3243245193 stream      0      0                0 1f34b8733a627c31                0                0 /var/run/mDNSResponder\n1f34b8733a627c31 stream      0      0                0 c8f92b3243245193                0                0\n2d39dde752e7a1cf stream      0      0                0 2bdffc69fd6bf88c                0                0 /var/run/mDNSResponder\n2bdffc69fd6bf88c stream      0      0                0 2d39dde752e7a1cf                0                0\n18cca61914ce8cbb stream      0      0                0 ab87353f42e1810e                0                0 /var/run/mDNSResponder\nab87353f42e1810e stream      0      0                0 18cca61914ce8cbb                0                0\n79b38c330bc82245 stream      0      0                0  ded7c9ea3e14d37                0                0 /var/run/mDNSResponder\n ded7c9ea3e14d37 stream      0      0                0 79b38c330bc82245                0                0\nc70fc0bc63b1de74 stream      0      0                0 be995281fdd78e72                0                0 /var/run/mDNSResponder\nbe995281fdd78e72 stream      0      0                0 c70fc0bc63b1de74                0                0\n57ebe3f59b406876 stream      0      0                0 ab06eab735571d31                0                0 /var/run/mDNSResponder\nab06eab735571d31 stream      0      0                0 57ebe3f59b406876                0                0\nc6296e953c9bb155 stream      0      0                0 69bd8782f0ae4f3f                0                0 /var/run/usbmuxd\n69bd8782f0ae4f3f stream      0      0                0 c6296e953c9bb155                0                0\nf4c5d041c23067ee stream      0      0                0 3337d062111cee6b                0                0 /var/run/usbmuxd\n3337d062111cee6b stream      0      0                0 f4c5d041c23067ee                0                0\n2fdc8d6ba11108a2 stream      0      0                0 c62afbbecc1fa55a                0                0 /var/run/mDNSResponder\nc62afbbecc1fa55a stream      0      0                0 2fdc8d6ba11108a2                0                0\n27d2e063c3612be2 stream      0      0                0 f937d546e133a61b                0                0 /var/run/mDNSResponder\nf937d546e133a61b stream      0      0                0 27d2e063c3612be2                0                0\n1186aa23ed064680 stream      0      0 ded7da6dd6ad6a64                0                0                0 /var/run/filesystemui.socket\nc935de05171e18f3 stream      0      0 ad3815ace9d10deb                0                0                0 /private/tmp/com.apple.launchd.33Z1LORdJP/Listeners\n580b01648a941048 stream      0      0                0 586c35784c978fff                0                0\n586c35784c978fff stream      0      0                0 580b01648a941048                0                0\n500c2b5621797695 stream      0      0 f2a66a32ceeda3df                0                0                0 /var/run/pppconfd\n993018c342f4a380 stream      0      0 cc4b6d21ca8b12b8                0                0                0 /var/run/usbmuxd\n1c9967511e83dff2 stream      0      0 5f7e4b81206836e0                0                0                0 /var/rpc/ncalrpc/srvsvc\n2d71b2b0319f9636 stream      0      0 505962d1cfd42ebc                0                0                0 /var/rpc/ncacn_np/srvsvc\nf04bcce808a48543 stream      0      0  bc4a191ebe0f725                0                0                0 /var/rpc/ncalrpc/wkssvc\n 17c51bd6c3964ef stream      0      0 30cf7ef422537682                0                0                0 /var/rpc/ncacn_np/wkssvc\ne828bcbb328ab24f stream      0      0 c3f5116e9b40c4da                0                0                0 /var/rpc/ncacn_np/mdssvc\nc9c2267e1e33c9ba stream      0      0 c69a1e908b24d302                0                0                0 /var/rpc/ncalrpc/lsarpc\n cd5771b260c357a stream      0      0 b07908a5fb684efb                0                0                0 /var/rpc/ncacn_np/lsarpc\nbf42cc5e8d2602d2 stream      0      0 68b87e38c2d51090                0                0                0 /var/run/mDNSResponder\n2ec89a7264f11b4e stream      0      0 cb86af97204ac939                0                0                0 /var/run/systemkeychaincheck.socket\n150cf127ff36b01e stream      0      0  317241a71273625                0                0                0 /private/var/run/.sim_diagnosticd_socket\nc86d203d8eb8169a stream      0      0 203770cd93fa15f1                0                0                0 /var/run/portmap.socket\n96a6e19992a7ac3b stream      0      0 29b1c5e457bbad63                0                0                0 /var/run/vpncontrol.sock\n66062d5afcc33653 stream      0      0 db519efadd004c6f                0                0                0 /var/rpc/ncalrpc/NETLOGON\naeab8936ea30ab05 stream      0      0 a3718b85df6c2100                0                0                0 /private/var/run/cupsd\nunexpected kind 258 which 0x102\ne002b60c2e27fa4d dgram       0      0                0 68206d234211edb0                0 13960c1bf7c22029\n13960c1bf7c22029 dgram       0      0                0 68206d234211edb0                0 e142f982b8b18806\ne142f982b8b18806 dgram       0      0                0 68206d234211edb0                0 fc4cca01758eaf2b\n4998feb3de67583b dgram       0      0                0 76cc200505d21491 76cc200505d21491                0\n76cc200505d21491 dgram       0      0                0 4998feb3de67583b 4998feb3de67583b                0\nfc4cca01758eaf2b dgram       0      0                0 68206d234211edb0                0 9aaf1fe300ed65db\n9aaf1fe300ed65db dgram       0      0                0 68206d234211edb0                0 fea7877116b7c2de\nfea7877116b7c2de dgram       0      0                0 68206d234211edb0                0 d2d16dfc959045ad\nd2d16dfc959045ad dgram       0      0                0 68206d234211edb0                0 167b956c394af7ee\n167b956c394af7ee dgram       0      0                0 68206d234211edb0                0 c73b84493c21c466\nc73b84493c21c466 dgram       0      0                0 68206d234211edb0                0 92a2b98997f835ee\n92a2b98997f835ee dgram       0      0                0 68206d234211edb0                0 251a890b8bb6e3f0\n251a890b8bb6e3f0 dgram       0      0                0 68206d234211edb0                0 fc914e5cecd39098\nfc914e5cecd39098 dgram       0      0                0 68206d234211edb0                0 28f18a9648e322c1\n28f18a9648e322c1 dgram       0      0                0 68206d234211edb0                0 88f2c5ce6425e1a9\n88f2c5ce6425e1a9 dgram       0      0                0 68206d234211edb0                0 79496a42ff569f05\n79496a42ff569f05 dgram       0      0                0 68206d234211edb0                0 8886d2d416a999cb\n8886d2d416a999cb dgram       0      0                0 68206d234211edb0                0 1b7ddb4068e20ed7\n1b7ddb4068e20ed7 dgram       0      0                0 68206d234211edb0                0 3e2af0be13ddf5ce\n3e2af0be13ddf5ce dgram       0      0                0 68206d234211edb0                0 9315df404391a7d4\ndad389c20b0c3168 dgram       0      0                0 59872f4bb633e3d9 59872f4bb633e3d9                0\n59872f4bb633e3d9 dgram       0      0                0 dad389c20b0c3168 dad389c20b0c3168                0\na929801510b12260 dgram       0      0                0 ebe1ccc9cf37cabc ebe1ccc9cf37cabc                0\nebe1ccc9cf37cabc dgram       0      0                0 a929801510b12260 a929801510b12260                0\n9315df404391a7d4 dgram       0      0                0 68206d234211edb0                0 7f56a663e77dd43f\n7f56a663e77dd43f dgram       0      0                0 68206d234211edb0                0 630d76524840dbe8\n630d76524840dbe8 dgram       0      0                0 68206d234211edb0                0 69fd79d9891e482a\n69fd79d9891e482a dgram       0      0                0 68206d234211edb0                0 9b8d6ea7b52592ed\n9b8d6ea7b52592ed dgram       0      0                0 68206d234211edb0                0 c7e58832cb5196db\nc7e58832cb5196db dgram       0      0                0 68206d234211edb0                0 163e72cf332e7c61\n163e72cf332e7c61 dgram       0      0                0 68206d234211edb0                0 b0d4745d5969da8e\nb0d4745d5969da8e dgram       0      0                0 68206d234211edb0                0 5735b778bf3d40e0\na40e2bfc0d4b96cd dgram       0      0                0 3752d91a1b41fb57 3752d91a1b41fb57                0\n3752d91a1b41fb57 dgram       0      0                0 a40e2bfc0d4b96cd a40e2bfc0d4b96cd                0\n5735b778bf3d40e0 dgram       0      0                0 68206d234211edb0                0 8e56290fdccc4e29\n8e56290fdccc4e29 dgram       0      0                0 68206d234211edb0                0 110512afe5eab578\n110512afe5eab578 dgram       0      0                0 68206d234211edb0                0 131cec4a73c6f61e\n131cec4a73c6f61e dgram       0      0                0 68206d234211edb0                0 443fbf284911a8bc\n443fbf284911a8bc dgram       0      0                0 68206d234211edb0                0 23f2225b84bb7144\n23f2225b84bb7144 dgram       0      0                0 68206d234211edb0                0  e4eb4af1604d2a8\n e4eb4af1604d2a8 dgram       0      0                0 68206d234211edb0                0 8318b8a2dc0fc305\n8318b8a2dc0fc305 dgram       0      0                0 68206d234211edb0                0 2fcad7b52c031be7\n605081831e41fc4f dgram       0      0                0 5bf6c6ab20d82513 5bf6c6ab20d82513                0\n5bf6c6ab20d82513 dgram       0      0                0 605081831e41fc4f 605081831e41fc4f                0\n2fcad7b52c031be7 dgram       0      0                0 68206d234211edb0                0 9c3a8b819ce72f9d\n9c3a8b819ce72f9d dgram       0      0                0 68206d234211edb0                0 a98fd68ecacf55e4\na98fd68ecacf55e4 dgram       0      0                0 68206d234211edb0                0 50cf07221ca827c5\n50cf07221ca827c5 dgram       0      0                0 68206d234211edb0                0 5b8522cfb0a8e176\n5b8522cfb0a8e176 dgram       0      0                0 68206d234211edb0                0  6f62363b2f1bc90\n 6f62363b2f1bc90 dgram       0      0                0 68206d234211edb0                0 80286ca9b185e738\n80286ca9b185e738 dgram       0      0                0 68206d234211edb0                0 79167153d4b83d30\n79167153d4b83d30 dgram       0      0                0 68206d234211edb0                0 f431f375d4fce5c7\nf431f375d4fce5c7 dgram       0      0                0 68206d234211edb0                0 23e5192519ad1427\n23e5192519ad1427 dgram       0      0                0 68206d234211edb0                0 f125592f18d89d7d\nf125592f18d89d7d dgram       0      0                0 68206d234211edb0                0 33e6b05a54b2958d\n33e6b05a54b2958d dgram       0      0                0 68206d234211edb0                0 d1e97ffcfd4b4375\nd1e97ffcfd4b4375 dgram       0      0                0 68206d234211edb0                0 c9ad74772a733bee\nc9ad74772a733bee dgram       0      0                0 68206d234211edb0                0 6ba6e2ed0f679f9a\n6ba6e2ed0f679f9a dgram       0      0                0 68206d234211edb0                0 bdf299551194f80f\nbdf299551194f80f dgram       0      0                0 68206d234211edb0                0 6eaf24ddf340416d\n6eaf24ddf340416d dgram       0      0                0 68206d234211edb0                0 46fb0e32b8c81e85\n46fb0e32b8c81e85 dgram       0      0                0 68206d234211edb0                0 3cb4bd61213c6eac\n3cb4bd61213c6eac dgram       0      0                0 68206d234211edb0                0 b4c07ac9b1666b7a\nb4c07ac9b1666b7a dgram       0      0                0 68206d234211edb0                0 a8acd25a6ede3208\n75873a9bfffb1629 dgram       0      0                0 1c5a4b05352b1e51 1c5a4b05352b1e51                0\n1c5a4b05352b1e51 dgram       0      0                0 75873a9bfffb1629 75873a9bfffb1629                0\na8acd25a6ede3208 dgram       0      0                0 68206d234211edb0                0 a0cc9a6bbecb5d7d\na0cc9a6bbecb5d7d dgram       0      0                0 68206d234211edb0                0 4e0f86a9a101de47\n4e0f86a9a101de47 dgram       0      0                0 68206d234211edb0                0 757fcf011fae09fa\n 33947c86c2bd659 dgram       0      0                0 cc064b7ae5e6ee70 cc064b7ae5e6ee70                0\ncc064b7ae5e6ee70 dgram       0      0                0  33947c86c2bd659  33947c86c2bd659                0\n757fcf011fae09fa dgram       0      0                0 68206d234211edb0                0 9d88e6805690d9a8\n9d88e6805690d9a8 dgram       0      0                0 68206d234211edb0                0 d0643f759cbb0250\nd0643f759cbb0250 dgram       0      0                0 68206d234211edb0                0 afbb21010fe5b7e7\nafbb21010fe5b7e7 dgram       0      0                0 68206d234211edb0                0 7b708cc594e67d02\n7b708cc594e67d02 dgram       0      0                0 68206d234211edb0                0 66c15203be7b734d\n66c15203be7b734d dgram       0      0                0 68206d234211edb0                0 ba2d42d9cacffe01\nba2d42d9cacffe01 dgram       0      0                0 68206d234211edb0                0 d9de32e20ac14d94\nd9de32e20ac14d94 dgram       0      0                0 68206d234211edb0                0 817f741130d23f39\n817f741130d23f39 dgram       0      0                0 68206d234211edb0                0 6bb408aed68cef2f\n6bb408aed68cef2f dgram       0      0                0 68206d234211edb0                0 d04a3b6fb4e8e707\nd04a3b6fb4e8e707 dgram       0      0                0 68206d234211edb0                0 484db50d5f07dcf7\n484db50d5f07dcf7 dgram       0      0                0 68206d234211edb0                0 f9defba71c63025d\ne62a19f150f411b6 dgram       0      0                0 59767ddc925cf180 59767ddc925cf180                0\n59767ddc925cf180 dgram       0      0                0 e62a19f150f411b6 e62a19f150f411b6                0\nf9defba71c63025d dgram       0      0                0 68206d234211edb0                0 6a7108bdf4eb5bea\n6a7108bdf4eb5bea dgram       0      0                0 68206d234211edb0                0 41f70d9280a03783\n41f70d9280a03783 dgram       0      0                0 68206d234211edb0                0 47308a6c697eca18\n47308a6c697eca18 dgram       0      0                0 68206d234211edb0                0 6955ab10ad133dfd\n6955ab10ad133dfd dgram       0      0                0 68206d234211edb0                0 cafdcfd34d3c9a98\ncafdcfd34d3c9a98 dgram       0      0                0 68206d234211edb0                0 e5fd64df641fc6da\ne5fd64df641fc6da dgram       0      0                0 68206d234211edb0                0 cfadf69ed2913acb\ncfadf69ed2913acb dgram       0      0                0 68206d234211edb0                0  2c14ddad7c23f60\n 2c14ddad7c23f60 dgram       0      0                0 68206d234211edb0                0 b752a7c9720adc2a\n7eda32678a652a21 dgram       0      0                0  d8cfdc6533daebe  d8cfdc6533daebe                0\n d8cfdc6533daebe dgram       0      0                0 7eda32678a652a21 7eda32678a652a21                0\nb752a7c9720adc2a dgram       0      0                0 68206d234211edb0                0 d15722e5426f3fcf\nd15722e5426f3fcf dgram       0      0                0 68206d234211edb0                0  5de6040a1ad2ea1\n 5de6040a1ad2ea1 dgram       0      0                0 68206d234211edb0                0 e4b63fe37588410d\ne4b63fe37588410d dgram       0      0                0 68206d234211edb0                0 2753f466e551bbc0\n2753f466e551bbc0 dgram       0      0                0 68206d234211edb0                0 9960abf23480977f\n9960abf23480977f dgram       0      0                0 68206d234211edb0                0 2f60534c75c571d9\n 9f055211faff404 dgram       0      0                0 f4177908d750a7a2 f4177908d750a7a2                0\nf4177908d750a7a2 dgram       0      0                0  9f055211faff404  9f055211faff404                0\n94476e36863c4462 dgram       0      0                0 171d26b0d2775bd7 171d26b0d2775bd7                0\n171d26b0d2775bd7 dgram       0      0                0 94476e36863c4462 94476e36863c4462                0\n2f60534c75c571d9 dgram       0      0                0 68206d234211edb0                0 97527342043b7d3f\n97527342043b7d3f dgram       0      0                0 68206d234211edb0                0 a0cc9a6236e25615\na0cc9a6236e25615 dgram       0      0                0 68206d234211edb0                0 dc6e310026926fd4\ndc6e310026926fd4 dgram       0      0                0 68206d234211edb0                0 710234ff3e137a15\n74bf77a04dadaeca dgram       0      0                0 edf15b049f410685 edf15b049f410685                0\nedf15b049f410685 dgram       0      0                0 74bf77a04dadaeca 74bf77a04dadaeca                0\n710234ff3e137a15 dgram       0      0                0 68206d234211edb0                0 66df597d69c9f7cf\n66df597d69c9f7cf dgram       0      0                0 68206d234211edb0                0 a3aac591702264a7\na3aac591702264a7 dgram       0      0                0 68206d234211edb0                0 f87199118c856cc4\nf87199118c856cc4 dgram       0      0                0 68206d234211edb0                0 92e907515eb226d6\n92e907515eb226d6 dgram       0      0                0 68206d234211edb0                0                0\n68206d234211edb0 dgram       0      0 4e8e715527085d26                0 e002b60c2e27fa4d                0 /private//var/run/syslog\nunexpected kind 258 which 0x102"
+  },
+  "errors": [
+    "❌ Отсутствуют пакеты: uvicorn[standard]",
+    "❌ Недоступны API: Telegram Bot API"
+  ],
+  "warnings": [],
+  "recommendations": [
+    "📦 Установите пакеты: pip install uvicorn[standard]",
+    "🐍 Создайте и активируйте виртуальное окружение",
+    "🌐 Проверьте подключение к API: Telegram Bot API"
+  ]
+}
