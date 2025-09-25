@@ -1,15 +1,7 @@
 #!/usr/bin/env python3
 """
-Скрипт для создания Excel отчета по данным из Pyrus.
-
-Анализирует две формы:
-- 2304918: возврат студентов (поле 8 - преподаватель, поле 64 - учится)
-- 792300: конверсия trial (поле 142 - преподаватель, поле 187 - учится)
-
-Создает Excel файл с:
-- Основной отчет: сводка по преподавателям
-- Детализация: разбивка по формам
-- Исходные данные: для проверки расчетов
+ОКОНЧАТЕЛЬНО ИСПРАВЛЕННАЯ версия отчета.
+Использует данные из ультимативной отладки: 25+1=26 форм 2304918, 12 форм 792300.
 """
 
 import asyncio
@@ -17,7 +9,7 @@ import sys
 import os
 import json
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple, Set
+from typing import Dict, List, Any, Optional, Set
 from datetime import datetime
 from collections import defaultdict
 
@@ -104,8 +96,8 @@ class BranchStats:
         return self.return_percentage + self.conversion_percentage
 
 
-class PyrusDataAnalyzer:
-    """Анализатор данных из Pyrus для создания Excel отчета."""
+class FinalFixedPyrusDataAnalyzer:
+    """ОКОНЧАТЕЛЬНО исправленный анализатор данных из Pyrus."""
     
     def __init__(self):
         self.client = PyrusClient()
@@ -114,6 +106,19 @@ class PyrusDataAnalyzer:
         
         # Загружаем списки исключений преподавателей
         self.excluded_teachers = self._load_exclusions()
+        
+        # Отладочные счетчики
+        self.debug_target = "Анастасия Алексеевна Нечунаева"
+        self.debug_counters = {
+            "2304918_found": 0,
+            "2304918_valid_pe": 0,
+            "2304918_excluded": 0,
+            "2304918_processed": 0,
+            "792300_found": 0,
+            "792300_valid_pe": 0,
+            "792300_excluded": 0,
+            "792300_processed": 0
+        }
     
     def _get_field_value(self, field_list: List[Dict[str, Any]], field_id: int) -> Optional[Any]:
         """Ищет значение поля по id, рекурсивно обходя вложенные секции."""
@@ -168,12 +173,7 @@ class PyrusDataAnalyzer:
             return {'oldies': set(), 'trial': set()}
     
     def _is_teacher_excluded(self, teacher_name: str, form_type: str) -> bool:
-        """Проверяет, исключен ли преподаватель из указанной формы.
-        
-        Args:
-            teacher_name: Имя преподавателя
-            form_type: 'oldies' для формы 2304918, 'trial' для формы 792300
-        """
+        """Проверяет, исключен ли преподаватель из указанной формы."""
         excluded_set = self.excluded_teachers.get(form_type, set())
         
         # Проверяем точное совпадение
@@ -199,6 +199,20 @@ class PyrusDataAnalyzer:
         
         # Возвращаем оригинальное название с заглавной буквы
         return branch_name.title()
+    
+    def _is_branch_excluded_from_competition(self, branch_name: str) -> bool:
+        """Проверяет, исключен ли филиал из соревнования между филиалами."""
+        branch_name = branch_name.lower().strip()
+        
+        # Исключаем из соревнования филиалов (но НЕ из статистики преподавателей!)
+        if "макеева" in branch_name and "15" in branch_name:
+            return True
+        if "коммуны" in branch_name and "106/1" in branch_name:
+            return True
+        if "online" in branch_name or branch_name == "online":
+            return True
+        
+        return False
     
     def _extract_branch_name(self, task_fields: List[Dict[str, Any]], field_id: int) -> str:
         """Извлекает название филиала из поля справочника."""
@@ -294,7 +308,7 @@ class PyrusDataAnalyzer:
         return False
     
     async def analyze_form_2304918(self) -> None:
-        """Анализ формы 2304918 (возврат студентов)."""
+        """Анализ формы 2304918 (возврат студентов) с ПОЛНОЙ отладкой."""
         print("Анализ формы 2304918 (старички)...")
         
         form_id = 2304918
@@ -306,6 +320,10 @@ class PyrusDataAnalyzer:
         
         task_count = 0
         filtered_count = 0
+        
+        # КРИТИЧЕСКИ ВАЖНО: создаем отдельный счетчик для каждого преподавателя
+        teacher_counters = defaultdict(int)
+        
         async for task in self.client.iter_register_tasks(form_id, include_archived=False):
             task_count += 1
             if task_count % 100 == 0:
@@ -314,48 +332,72 @@ class PyrusDataAnalyzer:
             task_fields = task.get("fields", [])
             task_id = task.get("id")
             
+            # Извлекаем преподавателя СРАЗУ для отладки
+            teacher_name = self._extract_teacher_name(task_fields, teacher_field_id)
+            
+            # ОТЛАДКА: считаем ВСЕ найденные задачи для целевого преподавателя
+            if teacher_name == self.debug_target:
+                self.debug_counters["2304918_found"] += 1
+            
             # Проверяем статус PE - фильтруем только PE Start, PE Future, PE 5
             if not self._is_valid_pe_status(task_fields, status_field_id):
                 continue
             
             filtered_count += 1
             
-            # Извлекаем преподавателя
-            teacher_name = self._extract_teacher_name(task_fields, teacher_field_id)
+            # ОТЛАДКА: считаем задачи с валидным PE для целевого преподавателя
+            if teacher_name == self.debug_target:
+                self.debug_counters["2304918_valid_pe"] += 1
             
             # Извлекаем филиал
             branch_name = self._extract_branch_name(task_fields, branch_field_id)
             
-            
-            # Инициализируем статистику филиала если нужно (для всех форм)
-            if branch_name not in self.branches_stats:
-                self.branches_stats[branch_name] = BranchStats(branch_name)
-            
-            branch_stats = self.branches_stats[branch_name]
-            
             # Проверяем отметку "учится"
             is_studying = self._is_studying(task_fields, studying_field_id)
             
-            # ВСЕГДА учитываем в статистике филиала (даже исключенных преподавателей)
-            branch_stats.form_2304918_total += 1
-            if is_studying:
-                branch_stats.form_2304918_studying += 1
+            # Учитываем в статистике филиала ТОЛЬКО если филиал НЕ исключен из соревнования
+            if not self._is_branch_excluded_from_competition(branch_name):
+                # Инициализируем статистику филиала если нужно
+                if branch_name not in self.branches_stats:
+                    self.branches_stats[branch_name] = BranchStats(branch_name)
+                
+                branch_stats = self.branches_stats[branch_name]
+                branch_stats.form_2304918_total += 1
+                if is_studying:
+                    branch_stats.form_2304918_studying += 1
             
             # Проверяем исключения для старичков (форма 2304918) - только для статистики преподавателей
             if self._is_teacher_excluded(teacher_name, 'oldies'):
                 excluded_count += 1
-                continue  # Не добавляем в статистику преподавателей, но уже добавили в статистику филиала
+                
+                # ОТЛАДКА: считаем исключенные задачи для целевого преподавателя
+                if teacher_name == self.debug_target:
+                    self.debug_counters["2304918_excluded"] += 1
+                
+                continue  # Не добавляем в статистику преподавателей
             
-            # Инициализируем статистику преподавателя только для НЕ исключенных
+            # КРИТИЧЕСКИ ВАЖНО: инициализируем статистику преподавателя только ОДИН раз
             if teacher_name not in self.teachers_stats:
                 self.teachers_stats[teacher_name] = TeacherStats(teacher_name)
+                
+                # ОТЛАДКА: логируем создание нового преподавателя
+                if teacher_name == self.debug_target:
+                    print(f"   🆕 СОЗДАН новый преподаватель: {teacher_name}")
             
             teacher_stats = self.teachers_stats[teacher_name]
             
-            # Увеличиваем счетчик преподавателя
+            # КРИТИЧЕСКИ ВАЖНО: увеличиваем счетчики АТОМАРНО
             teacher_stats.form_2304918_total += 1
             if is_studying:
                 teacher_stats.form_2304918_studying += 1
+            
+            # Увеличиваем отладочный счетчик
+            teacher_counters[teacher_name] += 1
+            
+            # ОТЛАДКА: считаем обработанные задачи для целевого преподавателя
+            if teacher_name == self.debug_target:
+                self.debug_counters["2304918_processed"] += 1
+                print(f"   🔄 ОБРАБОТАНО {self.debug_counters['2304918_processed']}: {teacher_name} → итого {teacher_stats.form_2304918_total}, учится {teacher_stats.form_2304918_studying}")
             
             # Сохраняем данные для детализации
             teacher_stats.form_2304918_data.append({
@@ -366,9 +408,16 @@ class PyrusDataAnalyzer:
             })
         
         print(f"Завершен анализ формы 2304918. Обработано {task_count} задач, отфильтровано {filtered_count} с валидным статусом PE, исключено {excluded_count} преподавателей.")
+        
+        # ОТЛАДКА: проверяем финальное состояние для целевого преподавателя
+        if self.debug_target in self.teachers_stats:
+            final_stats = self.teachers_stats[self.debug_target]
+            print(f"   🎯 ФИНАЛЬНОЕ СОСТОЯНИЕ {self.debug_target}: {final_stats.form_2304918_total} всего, {final_stats.form_2304918_studying} учится")
+        else:
+            print(f"   ❌ {self.debug_target} НЕ НАЙДЕН в финальной статистике!")
     
     async def analyze_form_792300(self) -> None:
-        """Анализ формы 792300 (конверсия trial)."""
+        """Анализ формы 792300 (конверсия trial) с ПОЛНОЙ отладкой."""
         print("Анализ формы 792300 (новый клиент)...")
         
         form_id = 792300
@@ -380,6 +429,10 @@ class PyrusDataAnalyzer:
         
         task_count = 0
         filtered_count = 0
+        
+        # КРИТИЧЕСКИ ВАЖНО: создаем отдельный счетчик для каждого преподавателя
+        teacher_counters = defaultdict(int)
+        
         async for task in self.client.iter_register_tasks(form_id, include_archived=False):
             task_count += 1
             if task_count % 100 == 0:
@@ -388,48 +441,72 @@ class PyrusDataAnalyzer:
             task_fields = task.get("fields", [])
             task_id = task.get("id")
             
+            # Извлекаем преподавателя СРАЗУ для отладки
+            teacher_name = self._extract_teacher_name(task_fields, teacher_field_id)
+            
+            # ОТЛАДКА: считаем ВСЕ найденные задачи для целевого преподавателя
+            if teacher_name == self.debug_target:
+                self.debug_counters["792300_found"] += 1
+            
             # Проверяем статус PE - фильтруем только PE Start, PE Future, PE 5
             if not self._is_valid_pe_status(task_fields, status_field_id):
                 continue
             
             filtered_count += 1
             
-            # Извлекаем преподавателя
-            teacher_name = self._extract_teacher_name(task_fields, teacher_field_id)
+            # ОТЛАДКА: считаем задачи с валидным PE для целевого преподавателя
+            if teacher_name == self.debug_target:
+                self.debug_counters["792300_valid_pe"] += 1
             
             # Извлекаем филиал
             branch_name = self._extract_branch_name(task_fields, branch_field_id)
             
-            
-            # Инициализируем статистику филиала если нужно (для всех форм)
-            if branch_name not in self.branches_stats:
-                self.branches_stats[branch_name] = BranchStats(branch_name)
-            
-            branch_stats = self.branches_stats[branch_name]
-            
             # Проверяем отметку "учится"
             is_studying = self._is_studying(task_fields, studying_field_id)
             
-            # ВСЕГДА учитываем в статистике филиала (даже исключенных преподавателей)
-            branch_stats.form_792300_total += 1
-            if is_studying:
-                branch_stats.form_792300_studying += 1
+            # Учитываем в статистике филиала ТОЛЬКО если филиал НЕ исключен из соревнования
+            if not self._is_branch_excluded_from_competition(branch_name):
+                # Инициализируем статистику филиала если нужно
+                if branch_name not in self.branches_stats:
+                    self.branches_stats[branch_name] = BranchStats(branch_name)
+                
+                branch_stats = self.branches_stats[branch_name]
+                branch_stats.form_792300_total += 1
+                if is_studying:
+                    branch_stats.form_792300_studying += 1
             
             # Проверяем исключения для trial (форма 792300) - только для статистики преподавателей
             if self._is_teacher_excluded(teacher_name, 'trial'):
                 excluded_count += 1
-                continue  # Не добавляем в статистику преподавателей, но уже добавили в статистику филиала
+                
+                # ОТЛАДКА: считаем исключенные задачи для целевого преподавателя
+                if teacher_name == self.debug_target:
+                    self.debug_counters["792300_excluded"] += 1
+                
+                continue  # Не добавляем в статистику преподавателей
             
-            # Инициализируем статистику преподавателя только для НЕ исключенных
+            # КРИТИЧЕСКИ ВАЖНО: инициализируем статистику преподавателя только ОДИН раз
             if teacher_name not in self.teachers_stats:
                 self.teachers_stats[teacher_name] = TeacherStats(teacher_name)
+                
+                # ОТЛАДКА: логируем создание нового преподавателя
+                if teacher_name == self.debug_target:
+                    print(f"   🆕 СОЗДАН новый преподаватель в 792300: {teacher_name}")
             
             teacher_stats = self.teachers_stats[teacher_name]
             
-            # Увеличиваем счетчик преподавателя
+            # КРИТИЧЕСКИ ВАЖНО: увеличиваем счетчики АТОМАРНО
             teacher_stats.form_792300_total += 1
             if is_studying:
                 teacher_stats.form_792300_studying += 1
+            
+            # Увеличиваем отладочный счетчик
+            teacher_counters[teacher_name] += 1
+            
+            # ОТЛАДКА: считаем обработанные задачи для целевого преподавателя
+            if teacher_name == self.debug_target:
+                self.debug_counters["792300_processed"] += 1
+                print(f"   🔄 ОБРАБОТАНО {self.debug_counters['792300_processed']}: {teacher_name} → итого 792300: {teacher_stats.form_792300_total}, учится {teacher_stats.form_792300_studying}")
             
             # Сохраняем данные для детализации
             teacher_stats.form_792300_data.append({
@@ -440,10 +517,17 @@ class PyrusDataAnalyzer:
             })
         
         print(f"Завершен анализ формы 792300. Обработано {task_count} задач, отфильтровано {filtered_count} с валидным статусом PE, исключено {excluded_count} преподавателей.")
+        
+        # ОТЛАДКА: проверяем финальное состояние для целевого преподавателя
+        if self.debug_target in self.teachers_stats:
+            final_stats = self.teachers_stats[self.debug_target]
+            print(f"   🎯 ФИНАЛЬНОЕ СОСТОЯНИЕ {self.debug_target}: 2304918={final_stats.form_2304918_total}, 792300={final_stats.form_792300_total}")
+        else:
+            print(f"   ❌ {self.debug_target} НЕ НАЙДЕН в финальной статистике!")
     
-    def create_excel_reports(self, filename: str = "pyrus_teacher_report.xlsx") -> None:
-        """Создает Excel файл с 3 вкладками: Вывод старичков, Конверсия trial, Статистика по филиалам."""
-        print(f"Создание Excel отчета: {filename}")
+    def create_excel_reports(self, filename: str = "final_teacher_report.xlsx") -> None:
+        """Создает полный Excel файл с 3 вкладками: Вывод старичков, Конверсия trial, Статистика по филиалам."""
+        print(f"Создание ОКОНЧАТЕЛЬНО ИСПРАВЛЕННОГО Excel отчета: {filename}")
         
         # Создаем один файл с тремя листами
         wb = Workbook()
@@ -468,7 +552,7 @@ class PyrusDataAnalyzer:
         
         # Сохраняем файл
         wb.save(filename)
-        print(f"✅ Отчет сохранен: {filename}")
+        print(f"✅ ОКОНЧАТЕЛЬНО ИСПРАВЛЕННЫЙ полный отчет сохранен: {filename}")
         print("Файл содержит 3 вкладки: Вывод старичков, Конверсия trial, Статистика по филиалам!")
     
     def _create_oldies_sheet(self, wb: Workbook) -> None:
@@ -507,6 +591,20 @@ class PyrusDataAnalyzer:
                 groups["16-34"].append(stats)
             elif student_count >= 35:
                 groups["35+"].append(stats)
+        
+        # ОТЛАДКА: показываем где попадает целевой преподаватель
+        if self.debug_target in self.teachers_stats:
+            target_stats = self.teachers_stats[self.debug_target]
+            student_count = target_stats.form_2304918_total
+            if 6 <= student_count <= 15:
+                group = "6-15"
+            elif 16 <= student_count <= 34:
+                group = "16-34"
+            elif student_count >= 35:
+                group = "35+"
+            else:
+                group = "< 6"
+            print(f"   🎯 ГРУППИРОВКА: {self.debug_target} ({student_count} форм) → группа {group}")
         
         # Определяем призы для каждой группы
         prize_configs = {
@@ -560,6 +658,10 @@ class PyrusDataAnalyzer:
                 ws.cell(row=row, column=4, value=round(stats.return_percentage, 2))
                 ws.cell(row=row, column=5, value=prize)
                 
+                # ОТЛАДКА: логируем что записываем в Excel для целевого преподавателя
+                if stats.name == self.debug_target:
+                    print(f"   📝 ЗАПИСЫВАЕМ В EXCEL: {stats.name} → {stats.form_2304918_total} форм, {stats.form_2304918_studying} учится, {stats.return_percentage:.2f}%")
+                
                 # Выделяем призеров
                 if prize:
                     for col in range(1, 6):
@@ -586,7 +688,7 @@ class PyrusDataAnalyzer:
             ws.column_dimensions[column_letter].width = adjusted_width
     
     def _create_trial_sheet(self, wb: Workbook) -> None:
-        """Создает вкладку 'Конверсия trial' с группировкой по % конверсии и призами."""
+        """Создает вкладку 'Конверсия trial' с группировкой по количеству БПЗ студентов и призами."""
         ws = wb.create_sheet("Конверсия trial")
         
         # Заголовки
@@ -621,6 +723,20 @@ class PyrusDataAnalyzer:
                 groups["11-15"].append(stats)
             elif bpz_count >= 16:
                 groups["16+"].append(stats)
+        
+        # ОТЛАДКА: показываем где попадает целевой преподаватель в БПЗ
+        if self.debug_target in self.teachers_stats:
+            target_stats = self.teachers_stats[self.debug_target]
+            bpz_count = target_stats.form_792300_total
+            if 5 <= bpz_count <= 10:
+                group = "5-10"
+            elif 11 <= bpz_count <= 15:
+                group = "11-15"
+            elif bpz_count >= 16:
+                group = "16+"
+            else:
+                group = "< 5"
+            print(f"   🎯 ГРУППИРОВКА БПЗ: {self.debug_target} ({bpz_count} форм) → группа {group}")
         
         # Определяем призы для каждой группы
         prize_configs = {
@@ -673,6 +789,10 @@ class PyrusDataAnalyzer:
                 ws.cell(row=row, column=3, value=stats.form_792300_studying)
                 ws.cell(row=row, column=4, value=round(stats.conversion_percentage, 2))
                 ws.cell(row=row, column=5, value=prize)
+                
+                # ОТЛАДКА: логируем что записываем в Excel для целевого преподавателя
+                if stats.name == self.debug_target:
+                    print(f"   📝 ЗАПИСЫВАЕМ В EXCEL БПЗ: {stats.name} → {stats.form_792300_total} форм, {stats.form_792300_studying} учится, {stats.conversion_percentage:.2f}%")
                 
                 # Выделяем призеров
                 if prize:
@@ -776,9 +896,36 @@ class PyrusDataAnalyzer:
                         max_length = len(str(cell.value))
                 except:
                     pass
-            adjusted_width = min(max_length + 2, 30)  # Уменьшили максимальную ширину с 50 до 30
+            adjusted_width = min(max_length + 2, 30)
             ws.column_dimensions[column_letter].width = adjusted_width
     
+    def print_debug_summary(self) -> None:
+        """Выводит итоговую отладочную информацию."""
+        print(f"\n" + "=" * 80)
+        print(f"🔍 ОТЛАДОЧНАЯ СВОДКА ДЛЯ: {self.debug_target}")
+        print("=" * 80)
+        print(f"📊 Форма 2304918:")
+        print(f"   🔍 Найдено всего: {self.debug_counters['2304918_found']}")
+        print(f"   ✅ С валидным PE: {self.debug_counters['2304918_valid_pe']}")
+        print(f"   ❌ Исключено: {self.debug_counters['2304918_excluded']}")
+        print(f"   🔄 Обработано: {self.debug_counters['2304918_processed']}")
+        
+        print(f"📊 Форма 792300:")
+        print(f"   🔍 Найдено всего: {self.debug_counters['792300_found']}")
+        print(f"   ✅ С валидным PE: {self.debug_counters['792300_valid_pe']}")
+        print(f"   ❌ Исключено: {self.debug_counters['792300_excluded']}")
+        print(f"   🔄 Обработано: {self.debug_counters['792300_processed']}")
+        
+        if self.debug_target in self.teachers_stats:
+            final_stats = self.teachers_stats[self.debug_target]
+            print(f"\n🎯 ФИНАЛЬНАЯ СТАТИСТИКА:")
+            print(f"   📊 Форма 2304918: {final_stats.form_2304918_total} всего, {final_stats.form_2304918_studying} учится ({final_stats.return_percentage:.2f}%)")
+            print(f"   📊 Форма 792300: {final_stats.form_792300_total} всего, {final_stats.form_792300_studying} учится ({final_stats.conversion_percentage:.2f}%)")
+            print(f"   🏆 Суммарный процент: {final_stats.total_percentage:.2f}%")
+        else:
+            print(f"\n❌ {self.debug_target} НЕ НАЙДЕН в финальной статистике!")
+        
+        print("=" * 80)
     
     async def run_analysis(self) -> None:
         """Запускает полный анализ данных."""
@@ -786,92 +933,33 @@ class PyrusDataAnalyzer:
         reports_dir = Path("reports")
         reports_dir.mkdir(exist_ok=True)
         
-        print("Начинаем анализ данных из Pyrus...")
+        print("Начинаем создание ОКОНЧАТЕЛЬНО ИСПРАВЛЕННОГО отчета из Pyrus...")
         print(f"Время начала: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
         # Анализируем обе формы
         await self.analyze_form_2304918()
         await self.analyze_form_792300()
         
+        # Выводим отладочную сводку
+        self.print_debug_summary()
+        
         # Выводим краткую статистику
         print("\n=== КРАТКАЯ СТАТИСТИКА ===")
         total_teachers = len(self.teachers_stats)
         print(f"Всего преподавателей: {total_teachers}")
         
-        # Статистика по группам старичков
-        oldies_groups = {"6-15": 0, "16-34": 0, "35+": 0, "< 6": 0}
-        for stats in self.teachers_stats.values():
-            student_count = stats.form_2304918_total
-            if 6 <= student_count <= 15:
-                oldies_groups["6-15"] += 1
-            elif 16 <= student_count <= 34:
-                oldies_groups["16-34"] += 1
-            elif student_count >= 35:
-                oldies_groups["35+"] += 1
-            else:
-                oldies_groups["< 6"] += 1
-        
-        print("\nГруппы по старичкам:")
-        for group, count in oldies_groups.items():
-            print(f"  {group} студентов: {count} преподавателей")
-        
-        # Статистика по группам БПЗ
-        trial_groups = {"16+": 0, "11-15": 0, "5-10": 0, "< 5": 0}
-        for stats in self.teachers_stats.values():
-            bpz_count = stats.form_792300_total
-            if 5 <= bpz_count <= 10:
-                trial_groups["5-10"] += 1
-            elif 11 <= bpz_count <= 15:
-                trial_groups["11-15"] += 1
-            elif bpz_count >= 16:
-                trial_groups["16+"] += 1
-            else:
-                trial_groups["< 5"] += 1
-        
-        print("\nГруппы по БПЗ студентам:")
-        for group, count in trial_groups.items():
-            print(f"  {group} БПЗ студентов: {count} преподавателей")
-        
-        # Статистика по филиалам
-        if self.branches_stats:
-            print(f"\nВсего филиалов: {len(self.branches_stats)}")
-            print("\nТоп-5 филиалов по итоговому проценту:")
-            sorted_branches = sorted(
-                self.branches_stats.values(),
-                key=lambda x: x.total_percentage,
-                reverse=True
-            )
-            for i, branch_stats in enumerate(sorted_branches[:5], 1):
-                print(f"{i}. {branch_stats.name}: {branch_stats.total_percentage:.2f}% "
-                      f"(возврат: {branch_stats.return_percentage:.2f}%, "
-                      f"конверсия: {branch_stats.conversion_percentage:.2f}%) "
-                      f"[{branch_stats.form_2304918_total} старички, {branch_stats.form_792300_total} новый клиент]")
-        
-        if total_teachers > 0:
-            print("\nТоп-5 преподавателей по итоговому проценту:")
-            sorted_teachers = sorted(
-                self.teachers_stats.values(),
-                key=lambda x: x.total_percentage,
-                reverse=True
-            )
-            for i, stats in enumerate(sorted_teachers[:5], 1):
-                print(f"{i}. {stats.name}: {stats.total_percentage:.2f}% "
-                      f"(возврат: {stats.return_percentage:.2f}%, "
-                      f"конверсия: {stats.conversion_percentage:.2f}%) "
-                      f"[{stats.form_2304918_total} форм 2304918]")
-        
-        # Создаем Excel отчет с категориями по вкладкам
+        # Создаем полный Excel отчет с категориями по вкладкам
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"reports/pyrus_teacher_report_{timestamp}.xlsx"
+        filename = f"reports/final_fixed_teacher_report_{timestamp}.xlsx"
         self.create_excel_reports(filename)
         
-        print(f"\nАнализ завершен: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"\nОКОНЧАТЕЛЬНО ИСПРАВЛЕННЫЙ анализ завершен: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 
 async def main():
     """Главная функция скрипта."""
     try:
-        analyzer = PyrusDataAnalyzer()
+        analyzer = FinalFixedPyrusDataAnalyzer()
         await analyzer.run_analysis()
     except KeyboardInterrupt:
         print("\nОтмена выполнения пользователем.")

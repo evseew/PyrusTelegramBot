@@ -121,3 +121,4 @@ deactivate 2>/dev/null || true
 echo "=== ДИАГНОСТИКА ЗАВЕРШЕНА ==="
 
 
+
