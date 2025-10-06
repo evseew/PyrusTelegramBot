@@ -38,7 +38,7 @@ class TeacherStats:
         self.form_2304918_studying = 0
         self.form_2304918_data = []  # Исходные данные для проверки
         
-        # Форма 792300 (конверсия trial)
+        # Форма 792300 (конверсия после БПЗ)
         self.form_792300_total = 0
         self.form_792300_studying = 0
         self.form_792300_data = []  # Исходные данные для проверки
@@ -52,7 +52,7 @@ class TeacherStats:
     
     @property
     def conversion_percentage(self) -> float:
-        """Процент конверсии trial → студент (форма 792300)."""
+        """Процент конверсии после БПЗ → студент (форма 792300)."""
         if self.form_792300_total == 0:
             return 0.0
         return (self.form_792300_studying / self.form_792300_total) * 100
@@ -85,7 +85,7 @@ class BranchStats:
     
     @property
     def conversion_percentage(self) -> float:
-        """Процент конверсии trial → студент (новый клиент)."""
+        """Процент конверсии после БПЗ → студент (новый клиент)."""
         if self.form_792300_total == 0:
             return 0.0
         return (self.form_792300_studying / self.form_792300_total) * 100
@@ -191,11 +191,10 @@ class FinalFixedPyrusDataAnalyzer:
         """Нормализует название филиала для объединения данных."""
         branch_name = branch_name.lower().strip()
         
-        # Объединяем филиалы Копейска под единым названием
+        # Только филиал Коммунистический 22 считается как Копейск
         if "коммунистический" in branch_name and "22" in branch_name:
             return "Копейск"
-        if "славы" in branch_name and "30" in branch_name:
-            return "Копейск"
+        # Славы 30 больше НЕ объединяется с Копейском
         
         # Возвращаем оригинальное название с заглавной буквы
         return branch_name.title()
@@ -208,6 +207,8 @@ class FinalFixedPyrusDataAnalyzer:
         if "макеева" in branch_name and "15" in branch_name:
             return True
         if "коммуны" in branch_name and "106/1" in branch_name:
+            return True
+        if "славы" in branch_name and "30" in branch_name:
             return True
         if "online" in branch_name or branch_name == "online":
             return True
@@ -417,7 +418,7 @@ class FinalFixedPyrusDataAnalyzer:
             print(f"   ❌ {self.debug_target} НЕ НАЙДЕН в финальной статистике!")
     
     async def analyze_form_792300(self) -> None:
-        """Анализ формы 792300 (конверсия trial) с ПОЛНОЙ отладкой."""
+        """Анализ формы 792300 (конверсия после БПЗ) с ПОЛНОЙ отладкой."""
         print("Анализ формы 792300 (новый клиент)...")
         
         form_id = 792300
@@ -475,7 +476,7 @@ class FinalFixedPyrusDataAnalyzer:
                 if is_studying:
                     branch_stats.form_792300_studying += 1
             
-            # Проверяем исключения для trial (форма 792300) - только для статистики преподавателей
+            # Проверяем исключения для БПЗ (форма 792300) - только для статистики преподавателей
             if self._is_teacher_excluded(teacher_name, 'trial'):
                 excluded_count += 1
                 
@@ -526,7 +527,7 @@ class FinalFixedPyrusDataAnalyzer:
             print(f"   ❌ {self.debug_target} НЕ НАЙДЕН в финальной статистике!")
     
     def create_excel_reports(self, filename: str = "final_teacher_report.xlsx") -> None:
-        """Создает полный Excel файл с 3 вкладками: Вывод старичков, Конверсия trial, Статистика по филиалам."""
+        """Создает полный Excel файл с 3 вкладками: Вывод старичков, Конверсия после БПЗ, Статистика по филиалам."""
         print(f"Создание ОКОНЧАТЕЛЬНО ИСПРАВЛЕННОГО Excel отчета: {filename}")
         
         # Создаем один файл с тремя листами
@@ -539,8 +540,8 @@ class FinalFixedPyrusDataAnalyzer:
         print("Создание вкладки 'Вывод старичков'...")
         self._create_oldies_sheet(wb)
         
-        # Вкладка 2: Конверсия trial (форма 792300)
-        print("Создание вкладки 'Конверсия trial'...")
+        # Вкладка 2: Конверсия после БПЗ (форма 792300)
+        print("Создание вкладки 'Конверсия после БПЗ'...")
         self._create_trial_sheet(wb)
         
         # Вкладка 3: Статистика по филиалам
@@ -562,14 +563,20 @@ class FinalFixedPyrusDataAnalyzer:
         total_sheets = len(wb.sheetnames)
         branch_detail_sheets = total_sheets - 3  # Основные 3 вкладки
         print(f"Файл содержит {total_sheets} вкладок:")
-        print("  📊 3 основные: Вывод старичков, Конверсия trial, Статистика по филиалам")
+        print("  📊 3 основные: Вывод старичков, Конверсия после БПЗ, Статистика по филиалам")
         print(f"  🏢 {branch_detail_sheets} детальных по филиалам")
     
     def _create_oldies_sheet(self, wb: Workbook) -> None:
         """Создает вкладку 'Вывод старичков' с группировкой по количеству студентов и призами."""
         ws = wb.create_sheet("Вывод старичков")
         
-        # Заголовки
+        # Добавляем правила формирования таблицы
+        rules_text = "Учитываются формы 2304918 со статусом PE: Start, Future, PE 5. Процент = доля форм со статусом 'учится'."
+        ws.cell(row=1, column=1, value=rules_text)
+        ws.cell(row=1, column=1).font = Font(italic=True, size=10, color="666666")
+        ws.merge_cells('A1:E1')  # Объединяем ячейки для правил
+        
+        # Заголовки (теперь во второй строке)
         headers = [
             "👨‍🏫 Преподаватель",
             "📊 Всего",
@@ -578,9 +585,9 @@ class FinalFixedPyrusDataAnalyzer:
             "🏆 Приз"
         ]
         
-        # Применяем заголовки
+        # Применяем заголовки (теперь во второй строке)
         for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
+            cell = ws.cell(row=2, column=col, value=header)
             cell.font = Font(bold=True)
             cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
             cell.alignment = Alignment(horizontal="center")
@@ -623,7 +630,7 @@ class FinalFixedPyrusDataAnalyzer:
             "6-15": {"prize": "Подписка в Tg Premium", "count": 3}
         }
         
-        row = 2
+        row = 3
         
         # Обрабатываем каждую группу
         for group_name, teachers_list in groups.items():
@@ -687,21 +694,32 @@ class FinalFixedPyrusDataAnalyzer:
         # Автоширина колонок
         for column in ws.columns:
             max_length = 0
-            column_letter = column[0].column_letter
+            column_letter = None
             for cell in column:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
-                    pass
-            adjusted_width = min(max_length + 2, 30)
-            ws.column_dimensions[column_letter].width = adjusted_width
+                # Пропускаем объединенные ячейки
+                if hasattr(cell, 'column_letter'):
+                    if column_letter is None:
+                        column_letter = cell.column_letter
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+            if column_letter:
+                adjusted_width = min(max_length + 2, 30)
+                ws.column_dimensions[column_letter].width = adjusted_width
     
     def _create_trial_sheet(self, wb: Workbook) -> None:
-        """Создает вкладку 'Конверсия trial' с группировкой по количеству БПЗ студентов и призами."""
-        ws = wb.create_sheet("Конверсия trial")
+        """Создает вкладку 'Конверсия после БПЗ' с группировкой по количеству БПЗ студентов и призами."""
+        ws = wb.create_sheet("Конверсия после БПЗ")
         
-        # Заголовки
+        # Добавляем правила формирования таблицы
+        rules_text = "Учитываются формы 792300 со статусом PE: Start, Future, PE 5. Процент = доля форм со статусом 'учится'."
+        ws.cell(row=1, column=1, value=rules_text)
+        ws.cell(row=1, column=1).font = Font(italic=True, size=10, color="666666")
+        ws.merge_cells('A1:E1')  # Объединяем ячейки для правил
+        
+        # Заголовки (теперь во второй строке)
         headers = [
             "👨‍🏫 Преподаватель",
             "📊 Всего",
@@ -710,9 +728,9 @@ class FinalFixedPyrusDataAnalyzer:
             "🏆 Приз"
         ]
         
-        # Применяем заголовки
+        # Применяем заголовки (теперь во второй строке)
         for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
+            cell = ws.cell(row=2, column=col, value=header)
             cell.font = Font(bold=True)
             cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
             cell.alignment = Alignment(horizontal="center")
@@ -755,7 +773,7 @@ class FinalFixedPyrusDataAnalyzer:
             "5-10": {"prize": "Подписка в Tg Premium", "count": 3}
         }
         
-        row = 2
+        row = 3
         
         # Обрабатываем каждую группу
         for group_name, teachers_list in groups.items():
@@ -819,21 +837,32 @@ class FinalFixedPyrusDataAnalyzer:
         # Автоширина колонок
         for column in ws.columns:
             max_length = 0
-            column_letter = column[0].column_letter
+            column_letter = None
             for cell in column:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
-                    pass
-            adjusted_width = min(max_length + 2, 30)
-            ws.column_dimensions[column_letter].width = adjusted_width
+                # Пропускаем объединенные ячейки
+                if hasattr(cell, 'column_letter'):
+                    if column_letter is None:
+                        column_letter = cell.column_letter
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+            if column_letter:
+                adjusted_width = min(max_length + 2, 30)
+                ws.column_dimensions[column_letter].width = adjusted_width
     
     def _create_branch_summary_sheet(self, wb: Workbook) -> None:
         """Создает лист со статистикой по филиалам."""
         ws = wb.create_sheet("Статистика по филиалам")
         
-        # Заголовки
+        # Добавляем правила формирования таблицы
+        rules_text = "Суммарная статистика по филиалам. Итоговый % = % возврата старичков + % конверсии после БПЗ."
+        ws.cell(row=1, column=1, value=rules_text)
+        ws.cell(row=1, column=1).font = Font(italic=True, size=10, color="666666")
+        ws.merge_cells('A1:I1')  # Объединяем ячейки для правил
+        
+        # Заголовки (теперь во второй строке)
         headers = [
             "🏢 Филиал",
             "👴 Ст: Всего",
@@ -846,9 +875,9 @@ class FinalFixedPyrusDataAnalyzer:
             "🎁 Приз"
         ]
         
-        # Применяем заголовки
+        # Применяем заголовки (теперь во второй строке)
         for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
+            cell = ws.cell(row=2, column=col, value=header)
             cell.font = Font(bold=True)
             cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
             cell.alignment = Alignment(horizontal="center")
@@ -870,7 +899,7 @@ class FinalFixedPyrusDataAnalyzer:
         ]
         
         # Данные по филиалам
-        row = 2
+        row = 3
         for i, branch_stats in enumerate(sorted_branches):
             # Определяем приз
             prize = ""
@@ -896,18 +925,41 @@ class FinalFixedPyrusDataAnalyzer:
             
             row += 1
         
+        # Добавляем список исключенных филиалов
+        row += 2  # Пропускаем строку
+        ws.cell(row=row, column=1, value="Филиалы, исключенные из соревнования:")
+        ws.cell(row=row, column=1).font = Font(bold=True, size=12, color="CC0000")
+        row += 1
+        
+        excluded_branches = [
+            "• Макеева 15 (исключен из соревнования)",
+            "• Коммуны 106/1 (исключен из соревнования)",
+            "• Славы 30 (исключен из соревнования)", 
+            "• Online (исключен из соревнования)"
+        ]
+        
+        for excluded_branch in excluded_branches:
+            ws.cell(row=row, column=1, value=excluded_branch)
+            ws.cell(row=row, column=1).font = Font(italic=True, color="999999")
+            row += 1
+        
         # Автоширина колонок
         for column in ws.columns:
             max_length = 0
-            column_letter = column[0].column_letter
+            column_letter = None
             for cell in column:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
-                    pass
-            adjusted_width = min(max_length + 2, 30)
-            ws.column_dimensions[column_letter].width = adjusted_width
+                # Пропускаем объединенные ячейки
+                if hasattr(cell, 'column_letter'):
+                    if column_letter is None:
+                        column_letter = cell.column_letter
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+            if column_letter:
+                adjusted_width = min(max_length + 2, 30)
+                ws.column_dimensions[column_letter].width = adjusted_width
     
     def _prepare_branch_teacher_data(self) -> Dict[str, Dict[str, Dict[str, Dict[str, int]]]]:
         """Подготавливает данные преподавателей, сгруппированные по филиалам.
@@ -940,9 +992,9 @@ class FinalFixedPyrusDataAnalyzer:
                 if is_studying:
                     branch_teacher_data[branch_name]["oldies"][teacher_name]["studying"] += 1
         
-        # Обрабатываем данные формы 792300 (trial)
+        # Обрабатываем данные формы 792300 (БПЗ)
         for teacher_name, teacher_stats in self.teachers_stats.items():
-            # Пропускаем исключенных преподавателей для trial
+            # Пропускаем исключенных преподавателей для БПЗ
             if self._is_teacher_excluded(teacher_name, 'trial'):
                 continue
                 
@@ -966,7 +1018,7 @@ class FinalFixedPyrusDataAnalyzer:
                     if oldies_data:
                         print(f"      👴 Старички: {oldies_data['total']} всего, {oldies_data['studying']} учится")
                     if trial_data:
-                        print(f"      👶 Trial: {trial_data['total']} всего, {trial_data['studying']} учится")
+                        print(f"      👶 БПЗ: {trial_data['total']} всего, {trial_data['studying']} учится")
         
         total_branches = len(branch_teacher_data)
         print(f"Подготовлены данные для {total_branches} филиалов")
@@ -1039,7 +1091,7 @@ class FinalFixedPyrusDataAnalyzer:
         # Разделитель между таблицами
         current_row += 3
         
-        # === ТАБЛИЦА 2: КОНВЕРСИЯ TRIAL ===
+        # === ТАБЛИЦА 2: КОНВЕРСИЯ ПОСЛЕ БПЗ ===
         current_row = self._add_trial_table_to_sheet(ws, current_row, branch_data["trial"], branch_name)
         
         # Автоширина колонок
@@ -1107,11 +1159,11 @@ class FinalFixedPyrusDataAnalyzer:
         return current_row
 
     def _add_trial_table_to_sheet(self, ws, start_row: int, trial_data: Dict[str, Dict[str, int]], branch_name: str) -> int:
-        """Добавляет таблицу 'Конверсия trial' на лист."""
+        """Добавляет таблицу 'Конверсия после БПЗ' на лист."""
         current_row = start_row
         
         # Заголовок таблицы
-        ws.cell(row=current_row, column=1, value=f"👶 КОНВЕРСИЯ TRIAL - {branch_name}")
+        ws.cell(row=current_row, column=1, value=f"👶 КОНВЕРСИЯ ПОСЛЕ БПЗ - {branch_name}")
         ws.cell(row=current_row, column=1).font = Font(bold=True, size=14, color="0066CC")
         current_row += 2
         
@@ -1161,7 +1213,7 @@ class FinalFixedPyrusDataAnalyzer:
         
         # Если нет данных
         if not teachers_with_data:
-            ws.cell(row=current_row, column=1, value="Нет данных по trial")
+            ws.cell(row=current_row, column=1, value="Нет данных по БПЗ")
             ws.cell(row=current_row, column=1).font = Font(italic=True, color="999999")
             current_row += 1
         
@@ -1171,15 +1223,20 @@ class FinalFixedPyrusDataAnalyzer:
         """Настраивает автоширину колонок."""
         for column in ws.columns:
             max_length = 0
-            column_letter = column[0].column_letter
+            column_letter = None
             for cell in column:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
-                    pass
-            adjusted_width = min(max_length + 2, 30)
-            ws.column_dimensions[column_letter].width = adjusted_width
+                # Пропускаем объединенные ячейки
+                if hasattr(cell, 'column_letter'):
+                    if column_letter is None:
+                        column_letter = cell.column_letter
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+            if column_letter:
+                adjusted_width = min(max_length + 2, 30)
+                ws.column_dimensions[column_letter].width = adjusted_width
 
     def print_debug_summary(self) -> None:
         """Выводит итоговую отладочную информацию."""
