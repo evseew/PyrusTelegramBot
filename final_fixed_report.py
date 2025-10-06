@@ -246,11 +246,11 @@ class FinalFixedPyrusDataAnalyzer:
         return "Неизвестный филиал"
     
     def _is_valid_pe_status(self, task_fields: List[Dict[str, Any]], field_id: int) -> bool:
-        """Проверяет, соответствует ли статус PE одному из допустимых: PE Start, PE Future, PE 5."""
+        """Проверяет, соответствует ли статус PE одному из допустимых: PE Start, PE Future, PE 5, Китайский."""
         value = self._get_field_value(task_fields, field_id)
         
         # Допустимые статусы PE
-        valid_statuses = {"PE Start", "PE Future", "PE 5"}
+        valid_statuses = {"PE Start", "PE Future", "PE 5", "Китайский"}
         
         if isinstance(value, dict):
             # Проверяем choice_names для справочника выбора
@@ -318,6 +318,7 @@ class FinalFixedPyrusDataAnalyzer:
         studying_field_id = 64  # Поле "УЧИТСЯ (заполняет СО)"
         branch_field_id = 5  # Поле с филиалом
         status_field_id = 7  # Поле со статусом PE
+        student_field_id = 2  # Поле с ФИО студента
         
         task_count = 0
         filtered_count = 0
@@ -352,6 +353,9 @@ class FinalFixedPyrusDataAnalyzer:
             
             # Извлекаем филиал
             branch_name = self._extract_branch_name(task_fields, branch_field_id)
+            
+            # Извлекаем ФИО студента
+            student_name = self._extract_teacher_name(task_fields, student_field_id)
             
             # Проверяем отметку "учится"
             is_studying = self._is_studying(task_fields, studying_field_id)
@@ -405,6 +409,7 @@ class FinalFixedPyrusDataAnalyzer:
                 "task_id": task_id,
                 "teacher": teacher_name,
                 "branch": branch_name,
+                "student_name": student_name,
                 "is_studying": is_studying
             })
         
@@ -427,6 +432,7 @@ class FinalFixedPyrusDataAnalyzer:
         studying_field_id = 187  # Поле "учится"
         branch_field_id = 226  # Поле с филиалом
         status_field_id = 228  # Поле со статусом PE
+        student_field_id = 73  # Поле с ФИО студента
         
         task_count = 0
         filtered_count = 0
@@ -461,6 +467,9 @@ class FinalFixedPyrusDataAnalyzer:
             
             # Извлекаем филиал
             branch_name = self._extract_branch_name(task_fields, branch_field_id)
+            
+            # Извлекаем ФИО студента
+            student_name = self._extract_teacher_name(task_fields, student_field_id)
             
             # Проверяем отметку "учится"
             is_studying = self._is_studying(task_fields, studying_field_id)
@@ -514,6 +523,7 @@ class FinalFixedPyrusDataAnalyzer:
                 "task_id": task_id,
                 "teacher": teacher_name,
                 "branch": branch_name,
+                "student_name": student_name,
                 "is_studying": is_studying
             })
         
@@ -571,7 +581,7 @@ class FinalFixedPyrusDataAnalyzer:
         ws = wb.create_sheet("Вывод старичков")
         
         # Добавляем правила формирования таблицы
-        rules_text = "Учитываются формы 2304918 со статусом PE: Start, Future, PE 5. Процент = доля форм со статусом 'учится'."
+        rules_text = "Учитываются формы 2304918 со статусом PE: Start, Future, PE 5, Китайский. Процент = доля форм со статусом 'учится'."
         ws.cell(row=1, column=1, value=rules_text)
         ws.cell(row=1, column=1).font = Font(italic=True, size=10, color="666666")
         ws.merge_cells('A1:E1')  # Объединяем ячейки для правил
@@ -714,7 +724,7 @@ class FinalFixedPyrusDataAnalyzer:
         ws = wb.create_sheet("Конверсия после БПЗ")
         
         # Добавляем правила формирования таблицы
-        rules_text = "Учитываются формы 792300 со статусом PE: Start, Future, PE 5. Процент = доля форм со статусом 'учится'."
+        rules_text = "Учитываются формы 792300 со статусом PE: Start, Future, PE 5, Китайский. Процент = доля форм со статусом 'учится'."
         ws.cell(row=1, column=1, value=rules_text)
         ws.cell(row=1, column=1).font = Font(italic=True, size=10, color="666666")
         ws.merge_cells('A1:E1')  # Объединяем ячейки для правил
@@ -857,7 +867,7 @@ class FinalFixedPyrusDataAnalyzer:
         ws = wb.create_sheet("Статистика по филиалам")
         
         # Добавляем правила формирования таблицы
-        rules_text = "Суммарная статистика по филиалам. Итоговый % = % возврата старичков + % конверсии после БПЗ."
+        rules_text = "Суммарная статистика по филиалам (статус PE: Start, Future, PE 5, Китайский). Итоговый % = % возврата старичков + % конверсии после БПЗ."
         ws.cell(row=1, column=1, value=rules_text)
         ws.cell(row=1, column=1).font = Font(italic=True, size=10, color="666666")
         ws.merge_cells('A1:I1')  # Объединяем ячейки для правил
@@ -961,93 +971,31 @@ class FinalFixedPyrusDataAnalyzer:
                 adjusted_width = min(max_length + 2, 30)
                 ws.column_dimensions[column_letter].width = adjusted_width
     
-    def _prepare_branch_teacher_data(self) -> Dict[str, Dict[str, Dict[str, Dict[str, int]]]]:
-        """Подготавливает данные преподавателей, сгруппированные по филиалам.
-        
-        Возвращает структуру:
-        {
-            "Филиал1": {
-                "oldies": {"Преподаватель1": {"total": 5, "studying": 3}, ...},
-                "trial": {"Преподаватель2": {"total": 2, "studying": 1}, ...}
-            }
-        }
-        """
-        print("Подготовка данных преподавателей по филиалам...")
-        
-        branch_teacher_data = defaultdict(lambda: {"oldies": defaultdict(lambda: {"total": 0, "studying": 0}), 
-                                                   "trial": defaultdict(lambda: {"total": 0, "studying": 0})})
-        
-        # Обрабатываем данные формы 2304918 (старички)
-        for teacher_name, teacher_stats in self.teachers_stats.items():
-            # Пропускаем исключенных преподавателей для старичков
-            if self._is_teacher_excluded(teacher_name, 'oldies'):
-                continue
-                
-            # Группируем по филиалам из детальных данных
-            for data_entry in teacher_stats.form_2304918_data:
-                branch_name = data_entry["branch"]
-                is_studying = data_entry["is_studying"]
-                
-                branch_teacher_data[branch_name]["oldies"][teacher_name]["total"] += 1
-                if is_studying:
-                    branch_teacher_data[branch_name]["oldies"][teacher_name]["studying"] += 1
-        
-        # Обрабатываем данные формы 792300 (БПЗ)
-        for teacher_name, teacher_stats in self.teachers_stats.items():
-            # Пропускаем исключенных преподавателей для БПЗ
-            if self._is_teacher_excluded(teacher_name, 'trial'):
-                continue
-                
-            # Группируем по филиалам из детальных данных
-            for data_entry in teacher_stats.form_792300_data:
-                branch_name = data_entry["branch"]
-                is_studying = data_entry["is_studying"]
-                
-                branch_teacher_data[branch_name]["trial"][teacher_name]["total"] += 1
-                if is_studying:
-                    branch_teacher_data[branch_name]["trial"][teacher_name]["studying"] += 1
-        
-        # ОТЛАДКА: показываем данные для целевого преподавателя
-        if self.debug_target:
-            print(f"🎯 ОТЛАДКА: Данные по филиалам для {self.debug_target}:")
-            for branch_name, branch_data in branch_teacher_data.items():
-                oldies_data = branch_data["oldies"].get(self.debug_target)
-                trial_data = branch_data["trial"].get(self.debug_target)
-                if oldies_data or trial_data:
-                    print(f"   📍 {branch_name}:")
-                    if oldies_data:
-                        print(f"      👴 Старички: {oldies_data['total']} всего, {oldies_data['studying']} учится")
-                    if trial_data:
-                        print(f"      👶 БПЗ: {trial_data['total']} всего, {trial_data['studying']} учится")
-        
-        total_branches = len(branch_teacher_data)
-        print(f"Подготовлены данные для {total_branches} филиалов")
-        
-        return dict(branch_teacher_data)
-
     def _create_branch_detail_sheets(self, wb: Workbook) -> None:
-        """Создает детальные вкладки для каждого филиала с двумя таблицами."""
+        """Создает детальные вкладки для каждого филиала с группировкой по преподавателям."""
         print("Создание детальных вкладок по филиалам...")
         
-        # Подготавливаем данные преподавателей по филиалам
-        branch_teacher_data = self._prepare_branch_teacher_data()
+        # Собираем все филиалы из данных преподавателей
+        all_branches = set()
+        for teacher_stats in self.teachers_stats.values():
+            for data in teacher_stats.form_2304918_data:
+                all_branches.add(data["branch"])
+            for data in teacher_stats.form_792300_data:
+                all_branches.add(data["branch"])
         
-        if not branch_teacher_data:
+        if not all_branches:
             print("⚠️ Нет данных для создания вкладок филиалов")
             return
         
         created_sheets = 0
         
         # Создаем вкладку для каждого филиала
-        for branch_name in sorted(branch_teacher_data.keys()):
-            branch_data = branch_teacher_data[branch_name]
+        for branch_name in sorted(all_branches):
+            # Проверяем, есть ли преподаватели с данными в этом филиале
+            teachers_in_branch = self._get_teachers_in_branch(branch_name)
             
-            # Проверяем, есть ли данные в этом филиале
-            has_oldies = any(data["total"] > 0 for data in branch_data["oldies"].values())
-            has_trial = any(data["total"] > 0 for data in branch_data["trial"].values())
-            
-            if has_oldies or has_trial:
-                self._create_single_branch_sheet(wb, branch_name, branch_data)
+            if teachers_in_branch:
+                self._create_single_branch_sheet(wb, branch_name, {})
                 created_sheets += 1
                 print(f"   ✅ Создана вкладка: {branch_name}")
             else:
@@ -1078,144 +1026,225 @@ class FinalFixedPyrusDataAnalyzer:
         return safe_name
 
     def _create_single_branch_sheet(self, wb: Workbook, branch_name: str, branch_data: Dict[str, Dict[str, Dict[str, int]]]) -> None:
-        """Создает отдельную вкладку для филиала с двумя таблицами."""
+        """Создает отдельную вкладку для филиала с группировкой по преподавателям."""
         # Создаем безопасное название для Excel (удаляем недопустимые символы)
         safe_name = self._make_safe_sheet_name(branch_name)
         ws = wb.create_sheet(safe_name)
         
         current_row = 1
         
-        # === ТАБЛИЦА 1: ВЫВОД СТАРИЧКОВ ===
-        current_row = self._add_oldies_table_to_sheet(ws, current_row, branch_data["oldies"], branch_name)
+        # Заголовок филиала
+        ws.cell(row=current_row, column=1, value=f"🏢 ФИЛИАЛ: {branch_name}")
+        ws.cell(row=current_row, column=1).font = Font(bold=True, size=16, color="0066CC")
+        ws.merge_cells(f'A{current_row}:C{current_row}')
+        current_row += 2
         
-        # Разделитель между таблицами
-        current_row += 3
+        # Получаем список всех преподавателей в этом филиале
+        teachers_in_branch = self._get_teachers_in_branch(branch_name)
         
-        # === ТАБЛИЦА 2: КОНВЕРСИЯ ПОСЛЕ БПЗ ===
-        current_row = self._add_trial_table_to_sheet(ws, current_row, branch_data["trial"], branch_name)
+        if not teachers_in_branch:
+            ws.cell(row=current_row, column=1, value="Нет данных по преподавателям в этом филиале")
+            ws.cell(row=current_row, column=1).font = Font(italic=True, color="999999")
+            self._adjust_column_widths(ws)
+            return
+        
+        # Для каждого преподавателя выводим обе секции (старички + БПЗ)
+        for i, teacher_info in enumerate(teachers_in_branch):
+            current_row = self._add_teacher_section_to_branch_sheet(ws, current_row, teacher_info, branch_name, i)
+            current_row += 2  # Разделитель между преподавателями
         
         # Автоширина колонок
         self._adjust_column_widths(ws)
 
-    def _add_oldies_table_to_sheet(self, ws, start_row: int, oldies_data: Dict[str, Dict[str, int]], branch_name: str) -> int:
-        """Добавляет таблицу 'Вывод старичков' на лист."""
+    def _get_teachers_in_branch(self, branch_name: str) -> List[Dict[str, Any]]:
+        """Получает список всех преподавателей с данными в указанном филиале."""
+        teachers_dict = {}
+        
+        # Собираем данные по старичкам
+        for teacher_name, teacher_stats in self.teachers_stats.items():
+            students_oldies = [d for d in teacher_stats.form_2304918_data if d["branch"] == branch_name]
+            if students_oldies:
+                if teacher_name not in teachers_dict:
+                    teachers_dict[teacher_name] = {"name": teacher_name, "oldies": [], "trial": []}
+                teachers_dict[teacher_name]["oldies"] = students_oldies
+        
+        # Собираем данные по БПЗ
+        for teacher_name, teacher_stats in self.teachers_stats.items():
+            students_trial = [d for d in teacher_stats.form_792300_data if d["branch"] == branch_name]
+            if students_trial:
+                if teacher_name not in teachers_dict:
+                    teachers_dict[teacher_name] = {"name": teacher_name, "oldies": [], "trial": []}
+                teachers_dict[teacher_name]["trial"] = students_trial
+        
+        # Преобразуем в список и добавляем статистику
+        teachers_list = []
+        for teacher_name, data in teachers_dict.items():
+            oldies_total = len(data["oldies"])
+            oldies_studying = sum(1 for s in data["oldies"] if s["is_studying"])
+            oldies_percentage = (oldies_studying / oldies_total * 100) if oldies_total > 0 else 0
+            
+            trial_total = len(data["trial"])
+            trial_studying = sum(1 for s in data["trial"] if s["is_studying"])
+            trial_percentage = (trial_studying / trial_total * 100) if trial_total > 0 else 0
+            
+            # Общий процент для сортировки
+            total_percentage = oldies_percentage + trial_percentage
+            
+            teachers_list.append({
+                "name": teacher_name,
+                "oldies_students": data["oldies"],
+                "oldies_total": oldies_total,
+                "oldies_studying": oldies_studying,
+                "oldies_percentage": oldies_percentage,
+                "trial_students": data["trial"],
+                "trial_total": trial_total,
+                "trial_studying": trial_studying,
+                "trial_percentage": trial_percentage,
+                "total_percentage": total_percentage
+            })
+        
+        # Сортируем по общему проценту (убывание)
+        teachers_list.sort(key=lambda x: x["total_percentage"], reverse=True)
+        
+        return teachers_list
+
+    def _add_teacher_section_to_branch_sheet(self, ws, start_row: int, teacher_info: Dict[str, Any], branch_name: str, teacher_index: int) -> int:
+        """Добавляет секцию для одного преподавателя с обеими таблицами (старички + БПЗ)."""
         current_row = start_row
         
-        # Заголовок таблицы
-        ws.cell(row=current_row, column=1, value=f"👴 ВЫВОД СТАРИЧКОВ - {branch_name}")
-        ws.cell(row=current_row, column=1).font = Font(bold=True, size=14, color="0066CC")
+        # Заголовок преподавателя (используем простой эмодзи для совместимости с Excel)
+        cell = ws.cell(row=current_row, column=1, value=f"👤 Преподаватель: {teacher_info['name']}")
+        cell.font = Font(bold=True, size=13)
+        cell.alignment = Alignment(horizontal="left", vertical="center")
+        
+        # Выделяем топ-3 преподавателей желтым фоном
+        if teacher_index < 3:
+            cell.fill = PatternFill(start_color="FFD700", end_color="FFD700", fill_type="solid")
+        
+        # Объединяем ячейки ПОСЛЕ установки всех свойств
+        ws.merge_cells(f'A{current_row}:C{current_row}')
+        
         current_row += 2
         
-        # Заголовки колонок
-        headers = ["👨‍🏫 Преподаватель", "📊 Всего", "🎓 Учится", "📈 %"]
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=current_row, column=col, value=header)
-            cell.font = Font(bold=True)
-            cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
-            cell.alignment = Alignment(horizontal="center")
-        current_row += 1
-        
-        # Фильтруем преподавателей с данными и сортируем по %
-        teachers_with_data = []
-        for teacher_name, data in oldies_data.items():
-            if data["total"] > 0:
-                percentage = (data["studying"] / data["total"]) * 100 if data["total"] > 0 else 0
-                teachers_with_data.append({
-                    "name": teacher_name,
-                    "total": data["total"],
-                    "studying": data["studying"],
-                    "percentage": percentage
-                })
-        
-        # Сортируем по % (убывание), при равенстве - по количеству всего
-        teachers_with_data.sort(key=lambda x: (x["percentage"], x["total"]), reverse=True)
-        
-        # Заполняем данные
-        for i, teacher_data in enumerate(teachers_with_data):
-            ws.cell(row=current_row, column=1, value=teacher_data["name"])
-            ws.cell(row=current_row, column=2, value=teacher_data["total"])
-            ws.cell(row=current_row, column=3, value=teacher_data["studying"])
-            ws.cell(row=current_row, column=4, value=round(teacher_data["percentage"], 2))
-            
-            # Выделяем топ-3 желтым
-            if i < 3:
-                for col in range(1, 5):
-                    ws.cell(row=current_row, column=col).fill = PatternFill(
-                        start_color="FFD700", end_color="FFD700", fill_type="solid"
-                    )
-            
-            # ОТЛАДКА: логируем данные целевого преподавателя
-            if teacher_data["name"] == self.debug_target:
-                print(f"   📝 СТАРИЧКИ {branch_name}: {teacher_data['name']} → {teacher_data['total']} всего, {teacher_data['studying']} учится, {teacher_data['percentage']:.2f}%")
-            
+        # === СЕКЦИЯ 1: СТАРИЧКИ ===
+        if teacher_info["oldies_students"]:
+            current_row = self._add_oldies_section(ws, current_row, teacher_info)
             current_row += 1
         
-        # Если нет данных
-        if not teachers_with_data:
-            ws.cell(row=current_row, column=1, value="Нет данных по старичкам")
+        # === СЕКЦИЯ 2: БПЗ ===
+        if teacher_info["trial_students"]:
+            current_row = self._add_trial_section(ws, current_row, teacher_info)
+            current_row += 1
+        
+        # Если нет данных вообще
+        if not teacher_info["oldies_students"] and not teacher_info["trial_students"]:
+            ws.cell(row=current_row, column=1, value="Нет данных по этому преподавателю")
             ws.cell(row=current_row, column=1).font = Font(italic=True, color="999999")
             current_row += 1
         
         return current_row
 
-    def _add_trial_table_to_sheet(self, ws, start_row: int, trial_data: Dict[str, Dict[str, int]], branch_name: str) -> int:
-        """Добавляет таблицу 'Конверсия после БПЗ' на лист."""
+    def _add_oldies_section(self, ws, start_row: int, teacher_info: Dict[str, Any]) -> int:
+        """Добавляет секцию 'Старички' для преподавателя."""
         current_row = start_row
         
-        # Заголовок таблицы
-        ws.cell(row=current_row, column=1, value=f"👶 КОНВЕРСИЯ ПОСЛЕ БПЗ - {branch_name}")
-        ws.cell(row=current_row, column=1).font = Font(bold=True, size=14, color="0066CC")
-        current_row += 2
-        
-        # Заголовки колонок
-        headers = ["👨‍🏫 Преподаватель", "📊 Всего", "🎓 Учится", "📈 %"]
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=current_row, column=col, value=header)
-            cell.font = Font(bold=True)
-            cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
-            cell.alignment = Alignment(horizontal="center")
+        # Заголовок секции
+        ws.cell(row=current_row, column=1, value="📊 СТАРИЧКИ (форма 2304918):")
+        ws.cell(row=current_row, column=1).font = Font(bold=True, size=11, color="0066CC")
         current_row += 1
         
-        # Фильтруем преподавателей с данными и сортируем по %
-        teachers_with_data = []
-        for teacher_name, data in trial_data.items():
-            if data["total"] > 0:
-                percentage = (data["studying"] / data["total"]) * 100 if data["total"] > 0 else 0
-                teachers_with_data.append({
-                    "name": teacher_name,
-                    "total": data["total"],
-                    "studying": data["studying"],
-                    "percentage": percentage
-                })
+        # Заголовки таблицы
+        ws.cell(row=current_row, column=1, value="ФИО студента")
+        ws.cell(row=current_row, column=1).font = Font(bold=True)
+        ws.cell(row=current_row, column=1).fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
+        ws.cell(row=current_row, column=2, value="Статус")
+        ws.cell(row=current_row, column=2).font = Font(bold=True)
+        ws.cell(row=current_row, column=2).fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
+        current_row += 1
         
-        # Сортируем по % (убывание), при равенстве - по количеству всего
-        teachers_with_data.sort(key=lambda x: (x["percentage"], x["total"]), reverse=True)
+        # Разделяем студентов
+        studying = [s for s in teacher_info["oldies_students"] if s["is_studying"]]
+        not_studying = [s for s in teacher_info["oldies_students"] if not s["is_studying"]]
         
-        # Заполняем данные
-        for i, teacher_data in enumerate(teachers_with_data):
-            ws.cell(row=current_row, column=1, value=teacher_data["name"])
-            ws.cell(row=current_row, column=2, value=teacher_data["total"])
-            ws.cell(row=current_row, column=3, value=teacher_data["studying"])
-            ws.cell(row=current_row, column=4, value=round(teacher_data["percentage"], 2))
-            
-            # Выделяем топ-3 желтым
-            if i < 3:
-                for col in range(1, 5):
-                    ws.cell(row=current_row, column=col).fill = PatternFill(
-                        start_color="FFD700", end_color="FFD700", fill_type="solid"
-                    )
-            
-            # ОТЛАДКА: логируем данные целевого преподавателя
-            if teacher_data["name"] == self.debug_target:
-                print(f"   📝 TRIAL {branch_name}: {teacher_data['name']} → {teacher_data['total']} всего, {teacher_data['studying']} учится, {teacher_data['percentage']:.2f}%")
-            
+        # Сначала вышедшие
+        if studying:
+            ws.cell(row=current_row, column=1, value="✅ ВЫШЛИ:")
+            ws.cell(row=current_row, column=1).font = Font(bold=True, color="008000")
             current_row += 1
+            
+            for student in studying:
+                ws.cell(row=current_row, column=1, value=student["student_name"])
+                ws.cell(row=current_row, column=2, value="✅ Учится")
+                current_row += 1
         
-        # Если нет данных
-        if not teachers_with_data:
-            ws.cell(row=current_row, column=1, value="Нет данных по БПЗ")
-            ws.cell(row=current_row, column=1).font = Font(italic=True, color="999999")
+        # Потом не вышедшие
+        if not_studying:
+            ws.cell(row=current_row, column=1, value="❌ НЕ ВЫШЛИ:")
+            ws.cell(row=current_row, column=1).font = Font(bold=True, color="CC0000")
             current_row += 1
+            
+            for student in not_studying:
+                ws.cell(row=current_row, column=1, value=student["student_name"])
+                ws.cell(row=current_row, column=2, value="❌ Не учится")
+                current_row += 1
+        
+        # Итоговая строка
+        ws.cell(row=current_row, column=1, value=f"📊 Итого: {teacher_info['oldies_total']} студентов, вышло {teacher_info['oldies_studying']} ({teacher_info['oldies_percentage']:.1f}%)")
+        ws.cell(row=current_row, column=1).font = Font(bold=True, italic=True)
+        ws.merge_cells(f'A{current_row}:B{current_row}')
+        current_row += 1
+        
+        return current_row
+
+    def _add_trial_section(self, ws, start_row: int, teacher_info: Dict[str, Any]) -> int:
+        """Добавляет секцию 'БПЗ' для преподавателя."""
+        current_row = start_row
+        
+        # Заголовок секции
+        ws.cell(row=current_row, column=1, value="📊 КОНВЕРСИЯ ПОСЛЕ БПЗ (форма 792300):")
+        ws.cell(row=current_row, column=1).font = Font(bold=True, size=11, color="0066CC")
+        current_row += 1
+        
+        # Заголовки таблицы
+        ws.cell(row=current_row, column=1, value="ФИО студента")
+        ws.cell(row=current_row, column=1).font = Font(bold=True)
+        ws.cell(row=current_row, column=1).fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
+        ws.cell(row=current_row, column=2, value="Статус")
+        ws.cell(row=current_row, column=2).font = Font(bold=True)
+        ws.cell(row=current_row, column=2).fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
+        current_row += 1
+        
+        # Разделяем студентов
+        studying = [s for s in teacher_info["trial_students"] if s["is_studying"]]
+        not_studying = [s for s in teacher_info["trial_students"] if not s["is_studying"]]
+        
+        # Сначала остались
+        if studying:
+            ws.cell(row=current_row, column=1, value="✅ ОСТАЛИСЬ:")
+            ws.cell(row=current_row, column=1).font = Font(bold=True, color="008000")
+            current_row += 1
+            
+            for student in studying:
+                ws.cell(row=current_row, column=1, value=student["student_name"])
+                ws.cell(row=current_row, column=2, value="✅ Учится")
+                current_row += 1
+        
+        # Потом не остались
+        if not_studying:
+            ws.cell(row=current_row, column=1, value="❌ НЕ ОСТАЛИСЬ:")
+            ws.cell(row=current_row, column=1).font = Font(bold=True, color="CC0000")
+            current_row += 1
+            
+            for student in not_studying:
+                ws.cell(row=current_row, column=1, value=student["student_name"])
+                ws.cell(row=current_row, column=2, value="❌ Не учится")
+                current_row += 1
+        
+        # Итоговая строка
+        ws.cell(row=current_row, column=1, value=f"📊 Итого: {teacher_info['trial_total']} БПЗ студентов, остались {teacher_info['trial_studying']} ({teacher_info['trial_percentage']:.1f}%)")
+        ws.cell(row=current_row, column=1).font = Font(bold=True, italic=True)
+        ws.merge_cells(f'A{current_row}:B{current_row}')
+        current_row += 1
         
         return current_row
 
