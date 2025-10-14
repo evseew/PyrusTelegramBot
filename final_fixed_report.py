@@ -1,7 +1,28 @@
 #!/usr/bin/env python3
 """
 ОКОНЧАТЕЛЬНО ИСПРАВЛЕННАЯ версия отчета.
-Использует данные из ультимативной отладки: 25+1=26 форм 2304918, 12 форм 792300.
+
+ФИЛЬТРАЦИЯ И ПОДСЧЁТ:
+
+Форма 2304918 (Старички - возврат студентов):
+  * Статус PE: Start, Future, PE 5, Китайский
+  * Даты выхода (поля 26, 31, 56):
+    - Если ВСЕ пустые → ВКЛЮЧАЕМ (не вышел на обучение)
+    - Если хотя бы одна заполнена → ВСЕ заполненные даты из августа-сентября 2025
+  * Учится: поле 64 (чекбокс)
+  * Китайский: учитывается в личном зачёте, НЕ учитывается в статистике филиалов
+  * Включая закрытые формы
+  
+Форма 792300 (БПЗ - конверсия после пробного):
+  * БАЗОВОЕ КОЛИЧЕСТВО (всего):
+    - Статус PE: Start, Future, PE 5, Китайский (проверяется ПЕРВЫМ)
+    - Поле 220 (дата БПЗ) = август-сентябрь 2025 (обязательна!)
+    - Поле 183 = "Да" (подтверждение прихода на БПЗ)
+    - Включая закрытые формы
+    - Группировка по клиентам (ФИО + филиал), логика "хотя бы один"
+  * УЧИТСЯ (для процента):
+    - Из клиентов базы: хотя бы одна форма с 183="Да" + поле 181="Сентябрь"
+  * Китайский: учитывается и в личном, и в филиальном зачёте
 """
 
 import asyncio
@@ -112,10 +133,12 @@ class FinalFixedPyrusDataAnalyzer:
         self.debug_counters = {
             "2304918_found": 0,
             "2304918_valid_pe": 0,
+            "2304918_valid_dates": 0,
             "2304918_excluded": 0,
             "2304918_processed": 0,
             "792300_found": 0,
             "792300_valid_pe": 0,
+            "792300_valid_dates": 0,
             "792300_excluded": 0,
             "792300_processed": 0
         }
@@ -308,6 +331,159 @@ class FinalFixedPyrusDataAnalyzer:
         
         return False
     
+    def _get_month_value(self, task_fields: List[Dict[str, Any]], field_id: int) -> str:
+        """Получает значение месяца из справочника (поле 181 для формы 792300)."""
+        value = self._get_field_value(task_fields, field_id)
+        
+        if isinstance(value, dict):
+            # Проверяем choice_names для справочника выбора
+            choice_names = value.get("choice_names")
+            if isinstance(choice_names, list) and len(choice_names) > 0:
+                return str(choice_names[0])
+            
+            # Проверяем массив values
+            values = value.get("values")
+            if isinstance(values, list) and len(values) > 0:
+                return str(values[0])
+            
+            # Проверяем rows
+            rows = value.get("rows")
+            if isinstance(rows, list) and len(rows) > 0 and isinstance(rows[0], list) and len(rows[0]) > 0:
+                return str(rows[0][0])
+            
+            # Проверяем text, name, value
+            for key in ("text", "name", "value"):
+                month_val = value.get(key)
+                if isinstance(month_val, str) and month_val.strip():
+                    return month_val.strip()
+        
+        if isinstance(value, str):
+            return value.strip()
+        
+        return ""
+    
+    def _is_studying_september(self, month_value: str) -> bool:
+        """Проверяет, является ли месяц 'Сентябрь' (для формы 792300)."""
+        return month_value.lower() in ("сентябрь", "september")
+    
+    def _parse_date_value(self, value: Any) -> Optional[datetime]:
+        """Парсит значение даты из различных форматов Pyrus API."""
+        if value is None:
+            return None
+        
+        # Строковое значение даты
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                return None
+            
+            # Пробуем различные форматы
+            for fmt in ["%Y-%m-%d", "%d.%m.%Y", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%fZ"]:
+                try:
+                    return datetime.strptime(value, fmt)
+                except ValueError:
+                    continue
+        
+        # Объект с датой
+        if isinstance(value, dict):
+            # ISO формат в поле date
+            date_str = value.get("date")
+            if isinstance(date_str, str):
+                try:
+                    return datetime.strptime(date_str, "%Y-%m-%d")
+                except ValueError:
+                    pass
+            
+            # Текстовое представление
+            text_val = value.get("text") or value.get("value")
+            if isinstance(text_val, str):
+                return self._parse_date_value(text_val)
+        
+        return None
+    
+    def _is_date_in_august_september_2025(self, date_value: Any) -> bool:
+        """Проверяет, попадает ли дата в диапазон август-сентябрь 2025."""
+        # Если date_value уже datetime объект - используем напрямую
+        if isinstance(date_value, datetime):
+            parsed_date = date_value
+        else:
+            # Иначе пытаемся распарсить
+            parsed_date = self._parse_date_value(date_value)
+        
+        if parsed_date is None:
+            return False
+        
+        # Диапазон: 01.08.2025 - 30.09.2025
+        start_date = datetime(2025, 8, 1)
+        end_date = datetime(2025, 9, 30, 23, 59, 59)
+        
+        return start_date <= parsed_date <= end_date
+    
+    def _validate_dates_form_2304918(self, task_fields: List[Dict[str, Any]]) -> bool:
+        """
+        Валидирует даты для формы 2304918 (поля 26, 31, 56).
+        
+        Правила:
+        - Если ВСЕ поля пустые → ВАЛИДНО (студент не вышел на обучение)
+        - Если хотя бы одно поле заполнено → ВСЕ заполненные даты должны быть из августа-сентября 2025
+        
+        Returns:
+            True если форма проходит валидацию, False иначе
+        """
+        date_field_ids = [26, 31, 56]
+        
+        found_dates = []
+        valid_dates = []
+        
+        for field_id in date_field_ids:
+            value = self._get_field_value(task_fields, field_id)
+            
+            # Пропускаем пустые поля
+            if value is None:
+                continue
+            
+            # Пробуем распарсить дату
+            parsed_date = self._parse_date_value(value)
+            
+            if parsed_date is not None:
+                found_dates.append(parsed_date)
+                
+                # Проверяем, попадает ли дата в диапазон август-сентябрь 2025
+                if self._is_date_in_august_september_2025(parsed_date):
+                    valid_dates.append(parsed_date)
+        
+        # Если нет ни одной даты - ВАЛИДНО (студент не вышел на обучение)
+        if len(found_dates) == 0:
+            return True
+        
+        # Если не все даты из августа-сентября 2025 - форма не проходит
+        if len(valid_dates) != len(found_dates):
+            return False
+        
+        # Есть хотя бы одна дата и все даты валидные
+        return True
+    
+    def _validate_date_form_792300(self, task_fields: List[Dict[str, Any]]) -> bool:
+        """
+        Валидирует дату БПЗ для формы 792300 (поле 220).
+        
+        Правила:
+        - Поле 220 (дата БПЗ) обязательно и должно быть из августа-сентября 2025
+        
+        Returns:
+            True если форма проходит валидацию, False иначе
+        """
+        date_field_id = 220  # ИЗМЕНЕНО: было 197, стало 220 (дата БПЗ)
+        
+        value = self._get_field_value(task_fields, date_field_id)
+        
+        # Поле обязательно - если пустое, форма не проходит
+        if value is None:
+            return False
+        
+        # Дата должна быть из августа-сентября 2025
+        return self._is_date_in_august_september_2025(value)
+    
     async def analyze_form_2304918(self) -> None:
         """Анализ формы 2304918 (возврат студентов) с ПОЛНОЙ отладкой."""
         print("Анализ формы 2304918 (старички)...")
@@ -326,7 +502,7 @@ class FinalFixedPyrusDataAnalyzer:
         # КРИТИЧЕСКИ ВАЖНО: создаем отдельный счетчик для каждого преподавателя
         teacher_counters = defaultdict(int)
         
-        async for task in self.client.iter_register_tasks(form_id, include_archived=False):
+        async for task in self.client.iter_register_tasks(form_id, include_archived=True):
             task_count += 1
             if task_count % 100 == 0:
                 print(f"Обработано {task_count} задач формы 2304918...")
@@ -334,22 +510,30 @@ class FinalFixedPyrusDataAnalyzer:
             task_fields = task.get("fields", [])
             task_id = task.get("id")
             
-            # Извлекаем преподавателя СРАЗУ для отладки
+            # СНАЧАЛА проверяем PE статус (самый ранний фильтр)
+            if not self._is_valid_pe_status(task_fields, status_field_id):
+                continue  # Просто пропускаем, не добавляем в статистику
+            
+            # Извлекаем преподавателя ПОСЛЕ проверки PE
             teacher_name = self._extract_teacher_name(task_fields, teacher_field_id)
             
             # ОТЛАДКА: считаем ВСЕ найденные задачи для целевого преподавателя
             if teacher_name == self.debug_target:
                 self.debug_counters["2304918_found"] += 1
             
-            # Проверяем статус PE - фильтруем только PE Start, PE Future, PE 5
-            if not self._is_valid_pe_status(task_fields, status_field_id):
-                continue
-            
-            filtered_count += 1
-            
             # ОТЛАДКА: считаем задачи с валидным PE для целевого преподавателя
             if teacher_name == self.debug_target:
                 self.debug_counters["2304918_valid_pe"] += 1
+            
+            # Проверяем даты в полях 26, 31, 56 (август-сентябрь 2025)
+            if not self._validate_dates_form_2304918(task_fields):
+                continue
+            
+            # ОТЛАДКА: считаем задачи с валидными датами для целевого преподавателя
+            if teacher_name == self.debug_target:
+                self.debug_counters["2304918_valid_dates"] += 1
+            
+            filtered_count += 1
             
             # Извлекаем филиал
             branch_name = self._extract_branch_name(task_fields, branch_field_id)
@@ -360,8 +544,18 @@ class FinalFixedPyrusDataAnalyzer:
             # Проверяем отметку "учится"
             is_studying = self._is_studying(task_fields, studying_field_id)
             
-            # Учитываем в статистике филиала ТОЛЬКО если филиал НЕ исключен из соревнования
-            if not self._is_branch_excluded_from_competition(branch_name):
+            # Получаем статус PE для проверки (нужно для исключения "Китайского" из филиалов)
+            pe_status_value = self._get_field_value(task_fields, status_field_id)
+            is_chinese = False
+            if isinstance(pe_status_value, dict):
+                choice_names = pe_status_value.get("choice_names", [])
+                if isinstance(choice_names, list) and len(choice_names) > 0:
+                    is_chinese = "китайский" in str(choice_names[0]).lower()
+            
+            # Учитываем в статистике филиала ТОЛЬКО если:
+            # 1) филиал НЕ исключен из соревнования
+            # 2) статус PE НЕ "Китайский" (для формы 2304918)
+            if not self._is_branch_excluded_from_competition(branch_name) and not is_chinese:
                 # Инициализируем статистику филиала если нужно
                 if branch_name not in self.branches_stats:
                     self.branches_stats[branch_name] = BranchStats(branch_name)
@@ -423,24 +617,27 @@ class FinalFixedPyrusDataAnalyzer:
             print(f"   ❌ {self.debug_target} НЕ НАЙДЕН в финальной статистике!")
     
     async def analyze_form_792300(self) -> None:
-        """Анализ формы 792300 (конверсия после БПЗ) с ПОЛНОЙ отладкой."""
-        print("Анализ формы 792300 (новый клиент)...")
+        """Анализ формы 792300 (конверсия после БПЗ) с новой логикой поля 183."""
+        print("Анализ формы 792300 (новый клиент) с полем 183...")
         
         form_id = 792300
         excluded_count = 0  # Счетчик исключенных преподавателей
         teacher_field_id = 142  # Поле с преподавателем
-        studying_field_id = 187  # Поле "учится"
+        month_field_id = 181  # Поле с месяцем
         branch_field_id = 226  # Поле с филиалом
         status_field_id = 228  # Поле со статусом PE
         student_field_id = 73  # Поле с ФИО студента
+        field_183_id = 183  # Поле "пришёл на БПЗ"
         
         task_count = 0
-        filtered_count = 0
+        
+        # Словарь для группировки форм по клиентам: {student_key: [формы]}
+        students_forms = defaultdict(list)
         
         # КРИТИЧЕСКИ ВАЖНО: создаем отдельный счетчик для каждого преподавателя
         teacher_counters = defaultdict(int)
         
-        async for task in self.client.iter_register_tasks(form_id, include_archived=False):
+        async for task in self.client.iter_register_tasks(form_id, include_archived=True):
             task_count += 1
             if task_count % 100 == 0:
                 print(f"Обработано {task_count} задач формы 792300...")
@@ -448,31 +645,81 @@ class FinalFixedPyrusDataAnalyzer:
             task_fields = task.get("fields", [])
             task_id = task.get("id")
             
-            # Извлекаем преподавателя СРАЗУ для отладки
+            # СНАЧАЛА проверяем PE статус (самый ранний фильтр)
+            if not self._is_valid_pe_status(task_fields, status_field_id):
+                continue  # Просто пропускаем, не добавляем в статистику
+            
+            # Извлекаем данные формы
             teacher_name = self._extract_teacher_name(task_fields, teacher_field_id)
+            branch_name = self._extract_branch_name(task_fields, branch_field_id)
+            student_name = self._extract_teacher_name(task_fields, student_field_id)
+            date_value = self._get_field_value(task_fields, 220)  # Дата БПЗ
+            month_value = self._get_month_value(task_fields, month_field_id)
+            field_183_value = self._get_month_value(task_fields, field_183_id)
             
             # ОТЛАДКА: считаем ВСЕ найденные задачи для целевого преподавателя
             if teacher_name == self.debug_target:
                 self.debug_counters["792300_found"] += 1
             
-            # Проверяем статус PE - фильтруем только PE Start, PE Future, PE 5
-            if not self._is_valid_pe_status(task_fields, status_field_id):
+            # Группируем формы по клиенту
+            student_key = f"{student_name}|{branch_name}"
+            
+            students_forms[student_key].append({
+                "task_id": task_id,
+                "teacher_name": teacher_name,
+                "branch_name": branch_name,
+                "student_name": student_name,
+                "date_bpz_obj": self._parse_date_value(date_value),
+                "month": month_value or "",
+                "field_183": field_183_value or "",
+            })
+        
+        print(f"✅ Загрузка завершена. Найдено {len(students_forms)} уникальных клиентов из {task_count} форм.")
+        
+        # Теперь анализируем каждого клиента
+        print("🔍 Анализирую клиентов по новой логике...")
+        
+        filtered_count = 0
+        
+        for student_key, forms in students_forms.items():
+            # БАЗА: Есть ли хотя бы одна форма с БПЗ в августе-сентябре + поле 183 = "Да"?
+            has_valid_bpz = False
+            valid_forms = []
+            
+            for form in forms:
+                is_date_valid = form["date_bpz_obj"] and self._is_date_in_august_september_2025(form["date_bpz_obj"])
+                is_183_yes = form["field_183"].lower() in ("да", "yes")
+                
+                if is_date_valid and is_183_yes:
+                    has_valid_bpz = True
+                    valid_forms.append(form)
+            
+            # Если клиент не попал в базу - пропускаем
+            if not has_valid_bpz:
                 continue
+            
+            # УЧИТСЯ: Есть ли хотя бы одна форма с 183 = "Да" И месяцем "Сентябрь"?
+            has_september = False
+            
+            for form in forms:
+                is_183_yes = form["field_183"].lower() in ("да", "yes")
+                is_month_september = form["month"].lower() in ("сентябрь", "september")
+                
+                if is_183_yes and is_month_september:
+                    has_september = True
+                    break
+            
+            # Берём первую валидную форму для извлечения данных
+            display_form = valid_forms[0]
+            teacher_name = display_form["teacher_name"]
+            branch_name = display_form["branch_name"]
+            student_name = display_form["student_name"]
             
             filtered_count += 1
             
-            # ОТЛАДКА: считаем задачи с валидным PE для целевого преподавателя
+            # ОТЛАДКА: считаем задачи с валидными данными для целевого преподавателя
             if teacher_name == self.debug_target:
-                self.debug_counters["792300_valid_pe"] += 1
-            
-            # Извлекаем филиал
-            branch_name = self._extract_branch_name(task_fields, branch_field_id)
-            
-            # Извлекаем ФИО студента
-            student_name = self._extract_teacher_name(task_fields, student_field_id)
-            
-            # Проверяем отметку "учится"
-            is_studying = self._is_studying(task_fields, studying_field_id)
+                self.debug_counters["792300_valid_dates"] += 1
             
             # Учитываем в статистике филиала ТОЛЬКО если филиал НЕ исключен из соревнования
             if not self._is_branch_excluded_from_competition(branch_name):
@@ -482,7 +729,7 @@ class FinalFixedPyrusDataAnalyzer:
                 
                 branch_stats = self.branches_stats[branch_name]
                 branch_stats.form_792300_total += 1
-                if is_studying:
+                if has_september:
                     branch_stats.form_792300_studying += 1
             
             # Проверяем исключения для БПЗ (форма 792300) - только для статистики преподавателей
@@ -507,7 +754,7 @@ class FinalFixedPyrusDataAnalyzer:
             
             # КРИТИЧЕСКИ ВАЖНО: увеличиваем счетчики АТОМАРНО
             teacher_stats.form_792300_total += 1
-            if is_studying:
+            if has_september:
                 teacher_stats.form_792300_studying += 1
             
             # Увеличиваем отладочный счетчик
@@ -520,14 +767,14 @@ class FinalFixedPyrusDataAnalyzer:
             
             # Сохраняем данные для детализации
             teacher_stats.form_792300_data.append({
-                "task_id": task_id,
+                "task_id": display_form["task_id"],
                 "teacher": teacher_name,
                 "branch": branch_name,
                 "student_name": student_name,
-                "is_studying": is_studying
+                "is_studying": has_september
             })
         
-        print(f"Завершен анализ формы 792300. Обработано {task_count} задач, отфильтровано {filtered_count} с валидным статусом PE, исключено {excluded_count} преподавателей.")
+        print(f"Завершен анализ формы 792300. Обработано {task_count} задач, отфильтровано {filtered_count} клиентов в базе, исключено {excluded_count} преподавателей.")
         
         # ОТЛАДКА: проверяем финальное состояние для целевого преподавателя
         if self.debug_target in self.teachers_stats:
@@ -581,7 +828,7 @@ class FinalFixedPyrusDataAnalyzer:
         ws = wb.create_sheet("Вывод старичков")
         
         # Добавляем правила формирования таблицы
-        rules_text = "Учитываются формы 2304918 со статусом PE: Start, Future, PE 5, Китайский. Процент = доля форм со статусом 'учится'."
+        rules_text = "Учитываются формы 2304918 со статусом PE: Start, Future, PE 5, Китайский. Даты выхода (поля 26,31,56): если пусто - включаем, если заполнено - только август-сентябрь 2025. Процент = доля форм со статусом 'учится'."
         ws.cell(row=1, column=1, value=rules_text)
         ws.cell(row=1, column=1).font = Font(italic=True, size=10, color="666666")
         ws.merge_cells('A1:E1')  # Объединяем ячейки для правил
@@ -724,7 +971,7 @@ class FinalFixedPyrusDataAnalyzer:
         ws = wb.create_sheet("Конверсия после БПЗ")
         
         # Добавляем правила формирования таблицы
-        rules_text = "Учитываются формы 792300 со статусом PE: Start, Future, PE 5, Китайский. Процент = доля форм со статусом 'учится'."
+        rules_text = "Учитываются формы 792300 со статусом PE: Start, Future, PE 5, Китайский. Дата выхода (поле 197): если пусто - включаем, если заполнено - только август-сентябрь 2025. Процент = доля форм со статусом 'учится'."
         ws.cell(row=1, column=1, value=rules_text)
         ws.cell(row=1, column=1).font = Font(italic=True, size=10, color="666666")
         ws.merge_cells('A1:E1')  # Объединяем ячейки для правил
@@ -867,7 +1114,7 @@ class FinalFixedPyrusDataAnalyzer:
         ws = wb.create_sheet("Статистика по филиалам")
         
         # Добавляем правила формирования таблицы
-        rules_text = "Суммарная статистика по филиалам (статус PE: Start, Future, PE 5, Китайский). Итоговый % = % возврата старичков + % конверсии после БПЗ."
+        rules_text = "Суммарная статистика по филиалам (статус PE: Start, Future, PE 5, Китайский). Даты выхода: пустые включаются, заполненные - только август-сентябрь 2025. Итоговый % = % возврата старичков + % конверсии после БПЗ."
         ws.cell(row=1, column=1, value=rules_text)
         ws.cell(row=1, column=1).font = Font(italic=True, size=10, color="666666")
         ws.merge_cells('A1:I1')  # Объединяем ячейки для правил
@@ -1275,12 +1522,14 @@ class FinalFixedPyrusDataAnalyzer:
         print(f"📊 Форма 2304918:")
         print(f"   🔍 Найдено всего: {self.debug_counters['2304918_found']}")
         print(f"   ✅ С валидным PE: {self.debug_counters['2304918_valid_pe']}")
+        print(f"   📅 С валидными датами: {self.debug_counters['2304918_valid_dates']}")
         print(f"   ❌ Исключено: {self.debug_counters['2304918_excluded']}")
         print(f"   🔄 Обработано: {self.debug_counters['2304918_processed']}")
         
         print(f"📊 Форма 792300:")
         print(f"   🔍 Найдено всего: {self.debug_counters['792300_found']}")
         print(f"   ✅ С валидным PE: {self.debug_counters['792300_valid_pe']}")
+        print(f"   📅 С валидными датами: {self.debug_counters['792300_valid_dates']}")
         print(f"   ❌ Исключено: {self.debug_counters['792300_excluded']}")
         print(f"   🔄 Обработано: {self.debug_counters['792300_processed']}")
         
