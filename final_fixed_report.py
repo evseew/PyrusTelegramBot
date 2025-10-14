@@ -321,13 +321,17 @@ class FinalFixedPyrusDataAnalyzer:
         
         # Строковое значение (checked/unchecked)
         if isinstance(value, str):
-            return value.lower() in ("да", "yes", "true", "checked")
+            return value.lower() in ("да", "yes", "true", "1", "checked")
         
         # Объект с чекбоксом
         if isinstance(value, dict):
-            checkmark = value.get("checkmark")
-            if checkmark == "checked":
-                return True
+            # Проверяем различные поля в объекте
+            for key in ("checked", "checkmark", "value", "text"):
+                val = value.get(key)
+                if isinstance(val, bool):
+                    return val
+                if isinstance(val, str):
+                    return val.lower() in ("да", "yes", "true", "1", "checked")
         
         return False
     
